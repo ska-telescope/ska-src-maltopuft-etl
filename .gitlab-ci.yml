@@ -1,0 +1,69 @@
+image: $SKA_K8S_TOOLS_DOCKER_BUILDER_IMAGE
+
+services:
+  - postgres:16.2-alpine3.19
+
+variables:
+  GIT_SUBMODULE_STRATEGY: recursive
+  CI_POETRY_VERSION: 1.8.2
+  POSTGRES_USER: $TEST_POSTGRES_USER
+  POSTGRES_DB: $TEST_POSTGRES_DB
+  POSTGRES_PASSWORD: $TEST_POSTGRES_PASSWORD
+
+stages:
+  - lint
+  - test
+  - scan
+  - build
+  - pages
+
+include:
+  # Python stages
+  # Lint
+  - project: 'ska-telescope/templates-repository'
+    file: 'gitlab-ci/includes/python-lint.gitlab-ci.yml'
+  # Test
+  - project: 'ska-telescope/templates-repository'
+    file: 'gitlab-ci/includes/python-test.gitlab-ci.yml'
+  # Scan
+  - project: 'ska-telescope/templates-repository'
+    file: 'gitlab-ci/includes/python-scan.gitlab-ci.yml'
+  # Build
+  - project: 'ska-telescope/templates-repository'
+    file: 'gitlab-ci/includes/python-build.gitlab-ci.yml'
+  # Documentation
+  - project: 'ska-telescope/templates-repository'
+    file: 'gitlab-ci/includes/docs.gitlab-ci.yml'
+  # Badges from CI metrics
+  - project: 'ska-telescope/templates-repository'
+    file: 'gitlab-ci/includes/finaliser.gitlab-ci.yml'
+
+.setup:
+  before_script:
+    # Install OS packages required for psycopg python package
+    - (apt update && apt-get install -y libpq-dev gcc)
+    # Set environment variables
+    - cp ${CI_ENV_FILE} .env
+
+# Override included jobs to run .setup.before_script first
+python-lint:
+  before_script:
+    - !reference [.setup, before_script]
+    - poetry self update $CI_POETRY_VERSION
+    - poetry config virtualenvs.in-project true
+    - poetry config virtualenvs.create $POETRY_CONFIG_VIRTUALENVS_CREATE
+    - time poetry install --with dev --no-root
+
+python-test:
+  before_script:
+    - !reference [.setup, before_script]
+    - poetry self update $CI_POETRY_VERSION
+    - poetry config virtualenvs.in-project true
+    - poetry config virtualenvs.create $POETRY_CONFIG_VIRTUALENVS_CREATE
+    - time poetry install --with dev --no-root
+
+python-build-for-development:
+  before_script:
+    - !reference [.setup, before_script]
+    - 'make help | grep python-build'
+    - pip install build==0.10.0
