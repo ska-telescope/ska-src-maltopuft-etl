@@ -5,33 +5,28 @@
 
 .. toctree::
   :maxdepth: 2
-  :caption: Home
+  :caption: ska-src-maltopuft-etl
   :hidden:
 
+  README.md
+  CHANGELOG.md
 
-MALTOPUFT ETL documentation
-===========================
-
-.. toctree::
-  :maxdepth: 2
-  :caption: Contents:
-
-.. README ========================================================
+.. Developer documentation =======================================
 ..
 
 .. toctree::
   :maxdepth: 2
-  :caption: Readme
-
-  README
-
-.. PAGES ========================================================
-..
-
-.. toctree::
-  :maxdepth: 2
-  :caption: Developer documentation
+  :caption: Project documentation
   :hidden:
 
   pages/maltopuft-etl.rst
+
+.. API documentation =============================================
+..
+
+.. toctree::
+  :maxdepth: 2
+  :caption: API documentation
+  :hidden:
+
   autoapi/index.rst
