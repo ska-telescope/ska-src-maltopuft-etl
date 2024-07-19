@@ -1,0 +1,14 @@
+[tool.poetry]
+name = "ska-src-maltopuft-etl"
+version = "0.0.1"
+description = "ETL scripts for the MAchine Learning TOolkit for PUlsars and Fast Transients"
+authors = ["Elliot Goodwin <elliot.goodwin@manchester.ac.uk>"]
+readme = "README.md"
+
+[tool.poetry.dependencies]
+python = "^3.11"
+
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
