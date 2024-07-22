@@ -8,6 +8,7 @@ import polars as pl
 
 from ska_src_maltopuft_etl.core.config import config
 
+from .candidate.extract import extract_spccl
 from .observation.extract import extract_observation
 
 logger = logging.getLogger(__name__)
@@ -21,7 +22,7 @@ def parse_candidate_dir(candidate_dir: PosixPath) -> dict[str, Any]:
 
     :return: A dictionary containing the normalised candidate data.
     """
-    run_summary_data = {}
+    run_summary_data, candidate_data = {}, {}
     for file in candidate_dir.iterdir():
         if file.match("*run_summary.json"):
             logger.debug(f"Parsing observation metadata from {file}")
@@ -29,13 +30,13 @@ def parse_candidate_dir(candidate_dir: PosixPath) -> dict[str, Any]:
             continue
         if file.match("*spccl.log"):
             logger.debug(f"Parsing candidate data from {file}")
+            candidate_data = extract_spccl(filename=file)
             continue
         if file.match("*.jpg"):
             continue
 
         logger.warning(f"Found file {file} in unexpected format.")
-
-    return run_summary_data
+    return {**run_summary_data, **candidate_data}
 
 
 def extract(

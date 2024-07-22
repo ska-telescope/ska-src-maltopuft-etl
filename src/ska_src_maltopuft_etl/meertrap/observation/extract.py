@@ -24,8 +24,13 @@ def read_json(filename: PosixPath) -> dict[str, Any]:
         raise ValueError(msg)
 
     try:
-        with Path.open(filename, "rb", encoding="utf-8") as f:
-            return orjson.loads(f.read())  # pylint: disable=maybe-no-member
+        with Path.open(  # pylint: disable=unspecified-encoding
+            filename,
+            "rb",
+        ) as f:
+            return orjson.loads(  # pylint: disable=maybe-no-member
+                f.read(),
+            )
     except FileNotFoundError as exc:
         msg = f"File {filename} not found."
         raise ValueError(msg) from exc
