@@ -1,6 +1,7 @@
 """ska-src-maltopuft-etl entrypoint."""
 
 import logging
+from ska_src_maltopuft_etl.core.config import config
 
 from ska_ser_logging import configure_logging
 

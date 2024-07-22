@@ -16,6 +16,9 @@ Pipfile.lock
 .env*
 !.env.example
 
+# Configuration files
+cfg/config.yml
+
 # Pytest
 htmlcov
 .coverage
