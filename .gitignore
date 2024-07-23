@@ -19,6 +19,10 @@ Pipfile.lock
 # Configuration files
 cfg/config.yml
 
+# Application data files
+data/
+results/
+
 # Pytest
 htmlcov
 .coverage

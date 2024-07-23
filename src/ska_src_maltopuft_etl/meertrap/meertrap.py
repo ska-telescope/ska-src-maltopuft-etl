@@ -1,15 +1,17 @@
 """Meertrap ETL entrypoint."""
 
 import logging
-from pathlib import PosixPath
+from pathlib import Path, PosixPath
 from typing import Any
 
+import pandas as pd
 import polars as pl
 
 from ska_src_maltopuft_etl.core.config import config
 
 from .candidate.extract import extract_spccl
 from .observation.extract import extract_observation
+from .observation.transform import transform_observation
 
 logger = logging.getLogger(__name__)
 
@@ -69,5 +71,33 @@ def extract(
 
         rows.append(parse_candidate_dir(candidate_dir=candidate_dir))
 
+    cand_df = cand_df.vstack(pl.DataFrame(rows, orient="row"))
     logger.info("Extract routine completed successfully")
     return cand_df
+
+
+def transform(df: pd.DataFrame) -> tuple[pl.DataFrame, pl.DataFrame]:
+    """Transform MeerTRAP data to MALTOPUFT DB schema."""
+    obs_pd, beams_pd = transform_observation(in_df=df)
+    obs_df: pl.DataFrame = pl.from_pandas(obs_pd)
+    beams_df: pl.DataFrame = pl.from_pandas(beams_pd)
+
+    output_path: PosixPath = config.get("output_path", Path())
+
+    obs_df_parquet_path = output_path / "obs_df.parquet"
+    logger.info(
+        f"Writing transformed observation data to {obs_df_parquet_path}",
+    )
+    obs_df.write_parquet(obs_df_parquet_path)
+    logger.info(
+        "Successfully wrote transformed observation data to "
+        f"{obs_df_parquet_path}",
+    )
+
+    beams_df_parquet_path = output_path / "beams_df.parquet"
+    logger.info(f"Writing transformed beam data to {beams_df_parquet_path}")
+    beams_df.write_parquet(beams_df_parquet_path)
+    logger.info(
+        f"Successfully wrote transformed beam data to {beams_df_parquet_path}",
+    )
+    return obs_df, beams_df

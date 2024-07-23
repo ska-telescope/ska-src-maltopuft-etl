@@ -337,7 +337,7 @@ class MeertrapRunSummary(BaseModel):
     def str2datetime(cls, value: str) -> dt.datetime:
         """Serialises the `utc_start` string to a `datetime` instance."""
         return dt.datetime.strptime(value, "%Y-%m-%d_%H:%M:%S").replace(
-            tzinfo=dt.timezone.utc,
+            tzinfo=dt.timezone.utc,  # noqa: UP017
         )
 
     @field_serializer("search_pipeline", when_used="always")

@@ -27,6 +27,8 @@ orjson = "^3.10.6"
 pydantic = "^2.8.2"
 polars = "^1.2.1"
 pyaml = "^24.7.0"
+pandas = "^2.2.2"
+pyarrow = "^17.0.0"
 
 
 [tool.poetry.group.dev.dependencies]
@@ -42,6 +44,7 @@ pylint-junit = "^0.3.4"
 ruff = "^0.5.3"
 pytest-bdd = "^7.2.0"
 types-pyyaml = "^6.0.12.20240311"
+pandas-stubs = "^2.2.2.240603"
 
 
 [tool.poetry.group.docs]
