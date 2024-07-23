@@ -1,28 +1,32 @@
 """MeerTRAP observation metadata to MALTOPUFT DB transformations."""
 
+import ast
 import datetime as dt
 
 import pandas as pd
 
 from ska_src_maltopuft_etl.core.exceptions import UnexpectedShapeError
 from ska_src_maltopuft_etl.meertrap.observation.constants import (
+    MHZ_TO_HZ,
     SPEED_OF_LIGHT_M_PER_S,
 )
 
 
-def transform_observation(df: pd.DataFrame) -> pd.DataFrame:
+def transform_observation(
+    in_df: pd.DataFrame,
+) -> tuple[pd.DataFrame, pd.DataFrame]:
     """MeerTRAP observation stransformation entrypoint."""
-    df = df.sort_values(by=["utc_start"]).reset_index()
+    in_df = in_df.sort_values(by=["utc_start"]).reset_index()
     out_df = pd.DataFrame(
         data={
-            "candidate": df["candidate"],
-            "start_at": pd.to_datetime(df["sb.actual_start_time"]),
-            "t_min": pd.to_datetime(df["utc_start"]),
+            "candidate": in_df["candidate"],
+            "start_at": pd.to_datetime(in_df["sb.actual_start_time"]),
+            "t_min": pd.to_datetime(in_df["utc_start"]),
         },
     )
 
     # Schedule block
-    sb_uniq_df = df.drop_duplicates(subset=["sb.id"])
+    sb_uniq_df = in_df.drop_duplicates(subset=["sb.id"])
     sb_df = get_sb_df(df=sb_uniq_df)
     meerkat_sb_df = get_meerkat_sb_df(df=sb_uniq_df)
     sb_df = sb_df.merge(
@@ -39,8 +43,8 @@ def transform_observation(df: pd.DataFrame) -> pd.DataFrame:
     )
 
     # Observation
-    df["est_end_at"] = out_df["est_end_at"].to_numpy()
-    obs_uniq_df = df.sort_values(
+    in_df["est_end_at"] = out_df["est_end_at"].to_numpy()
+    obs_uniq_df = in_df.sort_values(
         by=["utc_start", "utc_stop"],
         na_position="last",
     ).drop_duplicates(
@@ -63,7 +67,37 @@ def transform_observation(df: pd.DataFrame) -> pd.DataFrame:
         how="inner",
         validate="many_to_one",
     )
-    return out_df
+
+    tiling_df = get_tiling_config_df(df=obs_uniq_df, obs_df=obs_df)
+    out_df = tiling_df.merge(
+        out_df,
+        on="observation_id",
+        how="inner",
+        validate="many_to_many",
+    )
+
+    beam_df = get_beam_df(df=in_df, obs_df=obs_df)
+    host_df = beam_df.drop_duplicates(
+        subset=["ip_address", "hostname", "port"],
+    )
+    host_df["host_id"] = host_df.index.to_numpy()
+    beam_df = beam_df.merge(
+        host_df[["host_id", "ip_address", "hostname"]],
+        on=["ip_address", "hostname"],
+        how="left",
+    )
+    if beam_df["host_id"].isna().to_numpy().any():
+        msg = "Merge resulted in null host_id."
+        raise UnexpectedShapeError(msg)
+
+    out_df = out_df.merge(
+        beam_df,
+        on="candidate",
+        how="left",
+        validate="many_to_many",
+    )
+
+    return out_df, beam_df
 
 
 def get_sb_df(df: pd.DataFrame) -> pd.DataFrame:
@@ -265,10 +299,14 @@ def get_obs_df(
     )
 
     obs_df["em_min"] = (
-        SPEED_OF_LIGHT_M_PER_S / (obs_df["cfreq"] + obs_df["bw"] / 2.0) * 1.0e6
+        SPEED_OF_LIGHT_M_PER_S
+        / (obs_df["cfreq"] + obs_df["bw"] / 2.0)
+        * MHZ_TO_HZ
     )
     obs_df["em_max"] = (
-        SPEED_OF_LIGHT_M_PER_S / (obs_df["cfreq"] - obs_df["bw"] / 2.0) * 1.0e6
+        SPEED_OF_LIGHT_M_PER_S
+        / (obs_df["cfreq"] - obs_df["bw"] / 2.0)
+        * MHZ_TO_HZ
     )
 
     obs_df["dataproduct_type"] = (
@@ -315,3 +353,127 @@ def get_obs_df(
             "observation_id",
         ]
     ]
+
+
+def get_tiling_config_df(
+    df: pd.DataFrame,
+    obs_df: pd.DataFrame,
+) -> pd.DataFrame:
+    """Returns a dataframe with unique tiling configuration rows.
+
+    Note that `beams.ca_target_request.tilings` is serialized as a string.
+    This value is evaluated to list[str] with ast.literal_eval.
+
+    :param df: Pandas DataFrame containing unique observation data which
+        includes a `beams.ca_target_request.tilings` column as a string.
+    :param obs_df: Pandas DataFrame containing unique observation data,
+        including the `observation_id`.
+
+    :return: Pandas DataFrame with expanded tiling configurations and
+        normalized target columns.
+    """
+    tiling_df = pd.DataFrame(
+        data={
+            "observation_id": obs_df["observation_id"].to_numpy(),
+            "tilings": df["beams.ca_target_request.tilings"].apply(
+                ast.literal_eval,
+            ),
+        },
+    )
+
+    # Expand tilings list into rows
+    tiling_df = tiling_df.explode("tilings")
+
+    # Normalize tilings dict into columns
+    normalized_df = pd.json_normalize(tiling_df["tilings"].to_list())
+    normalized_df = normalized_df.set_index(tiling_df.index.values)
+    tiling_df = tiling_df.join(normalized_df, how="outer").drop(
+        columns=["tilings"],
+    )
+
+    # Convert reference frequency to MHz
+    tiling_df["reference_frequency"] = (
+        tiling_df["reference_frequency"].to_numpy() / MHZ_TO_HZ
+    )
+
+    # Normalise the target column
+    targets = (
+        tiling_df["target"]
+        .str.split(",", expand=True)
+        .rename(
+            columns={
+                0: "target",
+                1: "mode",
+                2: "ra",
+                3: "dec",
+            },
+        )
+        .drop(columns=["mode"])
+    )
+    tiling_df["tiling_config_id"] = tiling_df.index.to_numpy()
+    return tiling_df.drop(columns=["target"]).join(targets, how="outer")
+
+
+def get_beam_df(df: pd.DataFrame, obs_df: pd.DataFrame) -> pd.DataFrame:
+    """Returns a dataframe with unique observation beam rows.
+
+    Note that `beams.host_beams` is serialized as a string.
+    This value is evaluated to list[str] with ast.literal_eval.
+
+
+    :param df: Pandas DataFrame containing the main data with columns such as
+        `candidate`, `filename`, `utc_start`, and `beams.host_beams` as a
+        string column.
+    :param obs_df: Pandas DataFrame containing observation data with columns
+        `t_min` and `observation_id`.
+
+    :returns: Pandas DataFrame with expanded beam configurations and extracted
+        hostnames.
+    """
+    # Merge dataframes on `utc_start` and `t_min`
+    merged_df = df.merge(
+        obs_df,
+        left_on="utc_start",
+        right_on="t_min",
+        how="left",
+    )
+
+    if merged_df["observation_id"].isna().to_numpy().any():
+        msg = "Merge resulted in null `observation_id` values"
+        raise UnexpectedShapeError(msg)
+    if merged_df.shape[0] != df.shape[0]:
+        msg = "Merge resulted in unexpected row count"
+        raise UnexpectedShapeError(msg)
+
+    # Create initial beam DataFrame
+    beam_df = pd.DataFrame(
+        {
+            "candidate": merged_df["candidate"],
+            "filename": merged_df["filename"],
+            "beams": merged_df["beams.host_beams"].apply(ast.literal_eval),
+            "observation_id": merged_df["observation_id"],
+            "utc_start": merged_df["utc_start"],
+        },
+    )
+
+    # Extract hostname from filename
+    beam_df["hostname"] = beam_df["filename"].str.extract(
+        r"(?P<hostname>tpn-\d+-\d+)",
+    )
+
+    # Expand beams list into rows
+    beam_df = beam_df.explode("beams")
+
+    # Normalize beams dict into columns
+    normalized_df = pd.json_normalize(beam_df["beams"].to_list())
+    beam_df = beam_df.join(normalized_df).drop(columns=["beams"])
+    beam_df["beam_id"] = beam_df.index.to_numpy()
+    return beam_df.rename(
+        columns={
+            "absnum": "number",
+            "ra_hms": "ra",
+            "dec_dms": "dec",
+            "mc_ip": "ip_address",
+            "mc_port": "port",
+        },
+    )
