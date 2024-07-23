@@ -29,6 +29,7 @@ polars = "^1.2.1"
 pyaml = "^24.7.0"
 pandas = "^2.2.2"
 pyarrow = "^17.0.0"
+astropy = "^6.1.2"
 
 
 [tool.poetry.group.dev.dependencies]
@@ -144,6 +145,7 @@ dummy-variable-rgx = "^(_+|(_+[a-zA-Z0-9_]*[a-zA-Z0-9]+?))$"
 
 [[tool.mypy.overrides]]
 module = [
+    "astropy.time",
     "ska_ser_logging",
 ]
 ignore_missing_imports = true

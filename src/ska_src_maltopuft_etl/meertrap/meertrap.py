@@ -4,12 +4,12 @@ import logging
 from pathlib import Path, PosixPath
 from typing import Any
 
-import pandas as pd
 import polars as pl
 
 from ska_src_maltopuft_etl.core.config import config
 
 from .candidate.extract import extract_spccl
+from .candidate.transform import transform_spccl
 from .observation.extract import extract_observation
 from .observation.transform import transform_observation
 
@@ -76,28 +76,40 @@ def extract(
     return cand_df
 
 
-def transform(df: pd.DataFrame) -> tuple[pl.DataFrame, pl.DataFrame]:
+def transform(
+    df: pl.DataFrame,
+) -> tuple[pl.DataFrame, pl.DataFrame, pl.DataFrame]:
     """Transform MeerTRAP data to MALTOPUFT DB schema."""
     obs_pd, beams_pd = transform_observation(in_df=df)
-    obs_df: pl.DataFrame = pl.from_pandas(obs_pd)
-    beams_df: pl.DataFrame = pl.from_pandas(beams_pd)
 
     output_path: PosixPath = config.get("output_path", Path())
-
+    obs_df: pl.DataFrame = pl.from_pandas(obs_pd)
     obs_df_parquet_path = output_path / "obs_df.parquet"
     logger.info(
         f"Writing transformed observation data to {obs_df_parquet_path}",
     )
+
+    beam_df: pl.DataFrame = pl.from_pandas(beams_pd)
     obs_df.write_parquet(obs_df_parquet_path)
     logger.info(
         "Successfully wrote transformed observation data to "
         f"{obs_df_parquet_path}",
     )
 
-    beams_df_parquet_path = output_path / "beams_df.parquet"
-    logger.info(f"Writing transformed beam data to {beams_df_parquet_path}")
-    beams_df.write_parquet(beams_df_parquet_path)
+    beam_df_parquet_path = output_path / "beams_df.parquet"
+    logger.info(f"Writing transformed beam data to {beam_df_parquet_path}")
+    beam_df.write_parquet(beam_df_parquet_path)
     logger.info(
-        f"Successfully wrote transformed beam data to {beams_df_parquet_path}",
+        f"Successfully wrote transformed beam data to {beam_df_parquet_path}",
     )
-    return obs_df, beams_df
+
+    cand_pd = transform_spccl(df_in=obs_df.to_pandas())
+
+    cand_df: pl.DataFrame = pl.from_pandas(cand_pd)
+    cand_df_parquet_path = output_path / "cand_df.parquet"
+    logger.info(f"Writing transformed cand data to {cand_df_parquet_path}")
+    cand_df.write_parquet(cand_df_parquet_path)
+    logger.info(
+        f"Successfully wrote transformed cand data to {cand_df_parquet_path}",
+    )
+    return obs_df, beam_df, cand_df

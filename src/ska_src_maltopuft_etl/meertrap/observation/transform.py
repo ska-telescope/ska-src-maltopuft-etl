@@ -4,29 +4,32 @@ import ast
 import datetime as dt
 
 import pandas as pd
+import polars as pl
 
 from ska_src_maltopuft_etl.core.exceptions import UnexpectedShapeError
-from ska_src_maltopuft_etl.meertrap.observation.constants import (
-    MHZ_TO_HZ,
-    SPEED_OF_LIGHT_M_PER_S,
-)
+from ska_src_maltopuft_etl.meertrap.candidate.extract import SPCCL_COLUMNS
+
+from .constants import MHZ_TO_HZ, SPEED_OF_LIGHT_M_PER_S
+
+
+def get_base_df(df: pd.DataFrame) -> pd.DataFrame:
+    """Initialise the transformed DataFrame."""
+    base_df = df[["candidate", *SPCCL_COLUMNS]]
+    base_df["start_at"] = pd.to_datetime(df["sb.actual_start_time"])
+    base_df["t_min"] = pd.to_datetime(df["utc_start"])
+    return base_df
 
 
 def transform_observation(
-    in_df: pd.DataFrame,
+    in_df: pl.DataFrame,
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
-    """MeerTRAP observation stransformation entrypoint."""
-    in_df = in_df.sort_values(by=["utc_start"]).reset_index()
-    out_df = pd.DataFrame(
-        data={
-            "candidate": in_df["candidate"],
-            "start_at": pd.to_datetime(in_df["sb.actual_start_time"]),
-            "t_min": pd.to_datetime(in_df["utc_start"]),
-        },
-    )
+    """MeerTRAP observation transformation entrypoint."""
+    # Sort raw data by ascending observation time
+    raw_df = in_df.to_pandas().sort_values(by=["utc_start"]).reset_index()
+    out_df = get_base_df(df=raw_df)
 
     # Schedule block
-    sb_uniq_df = in_df.drop_duplicates(subset=["sb.id"])
+    sb_uniq_df = raw_df.drop_duplicates(subset=["sb.id"])
     sb_df = get_sb_df(df=sb_uniq_df)
     meerkat_sb_df = get_meerkat_sb_df(df=sb_uniq_df)
     sb_df = sb_df.merge(
@@ -43,8 +46,8 @@ def transform_observation(
     )
 
     # Observation
-    in_df["est_end_at"] = out_df["est_end_at"].to_numpy()
-    obs_uniq_df = in_df.sort_values(
+    raw_df["est_end_at"] = out_df["est_end_at"].to_numpy()
+    obs_uniq_df = raw_df.sort_values(
         by=["utc_start", "utc_stop"],
         na_position="last",
     ).drop_duplicates(
@@ -76,7 +79,7 @@ def transform_observation(
         validate="many_to_many",
     )
 
-    beam_df = get_beam_df(df=in_df, obs_df=obs_df)
+    beam_df = get_beam_df(df=raw_df, obs_df=obs_df)
     host_df = beam_df.drop_duplicates(
         subset=["ip_address", "hostname", "port"],
     )
@@ -92,7 +95,7 @@ def transform_observation(
 
     out_df = out_df.merge(
         beam_df,
-        on="candidate",
+        on=["candidate", "observation_id"],
         how="left",
         validate="many_to_many",
     )
@@ -430,7 +433,6 @@ def get_beam_df(df: pd.DataFrame, obs_df: pd.DataFrame) -> pd.DataFrame:
     :returns: Pandas DataFrame with expanded beam configurations and extracted
         hostnames.
     """
-    # Merge dataframes on `utc_start` and `t_min`
     merged_df = df.merge(
         obs_df,
         left_on="utc_start",
