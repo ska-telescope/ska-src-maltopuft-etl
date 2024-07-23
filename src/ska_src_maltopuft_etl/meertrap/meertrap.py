@@ -4,12 +4,14 @@ import logging
 from pathlib import PosixPath
 from typing import Any
 
+import pandas as pd
 import polars as pl
 
 from ska_src_maltopuft_etl.core.config import config
 
 from .candidate.extract import extract_spccl
 from .observation.extract import extract_observation
+from .observation.transform import transform_observation
 
 logger = logging.getLogger(__name__)
 
@@ -69,5 +71,12 @@ def extract(
 
         rows.append(parse_candidate_dir(candidate_dir=candidate_dir))
 
+    cand_df = cand_df.vstack(pl.DataFrame(rows, orient="row"))
     logger.info("Extract routine completed successfully")
     return cand_df
+
+
+def transform(df: pd.DataFrame) -> pl.DataFrame:
+    """Transform MeerTRAP data to MALTOPUFT DB schema."""
+    out_df = transform_observation(df=df)
+    return pl.from_pandas(out_df)
