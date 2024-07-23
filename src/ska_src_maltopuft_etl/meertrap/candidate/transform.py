@@ -45,7 +45,7 @@ def transform_candidate(df: pd.DataFrame) -> pd.DataFrame:
         pd.DataFrame: Candidate model data.
 
     """
-    cand_df = df.loc[(df["beam"] == df["number"])]
+    cand_df = df.loc[(df["beam"] == df["beam.number"])]
     cand_df["candidate_id"] = cand_df.index.to_numpy()
     return cand_df
 
