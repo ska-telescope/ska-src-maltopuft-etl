@@ -4,9 +4,16 @@ import logging
 from pathlib import Path, PosixPath
 from typing import Any
 
+import pandas as pd
 import polars as pl
 
 from ska_src_maltopuft_etl.core.config import config
+from ska_src_maltopuft_etl.core.database import engine
+from ska_src_maltopuft_etl.database_loader import DatabaseLoader
+from ska_src_maltopuft_etl.meertrap.observation.targets import (
+    beam_targets,
+    observation_targets,
+)
 
 from .candidate.extract import extract_spccl
 from .candidate.transform import transform_spccl
@@ -112,4 +119,31 @@ def transform(
     logger.info(
         f"Successfully wrote transformed cand data to {cand_df_parquet_path}",
     )
+
     return obs_df, beam_df, cand_df
+
+
+def load(
+    obs_df: pd.DataFrame,
+    beam_df: pd.DataFrame,
+    cand_df: pd.DataFrame,
+) -> None:
+    """Load MeerTRAP data into a database."""
+    with engine.connect() as conn, conn.begin():
+        db = DatabaseLoader(conn=conn)
+        for target in observation_targets:
+            obs_df = db.load_target(
+                df=obs_df,
+                target=target,
+            )
+
+        observation_id_map = db.foreign_keys_map["observation_id"]
+        beam_df["observation_id"] = beam_df["observation_id"].map(
+            observation_id_map,
+        )
+
+        for target in beam_targets:
+            beam_df = db.load_target(df=beam_df, target=target)
+
+        beam_id_map = db.foreign_keys_map["beam_id"]
+        cand_df["beam_id"] = cand_df["beam_id"].map(beam_id_map)

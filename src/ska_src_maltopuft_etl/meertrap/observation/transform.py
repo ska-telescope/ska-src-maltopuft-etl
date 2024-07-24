@@ -159,6 +159,7 @@ def get_meerkat_sb_df(df: pd.DataFrame) -> pd.DataFrame:
     """Returns a dataframe with unique Meerkat schedule block rows."""
     meerkat_sb_df = pd.DataFrame(
         data={
+            "meerkat_schedule_block_id": df.index.to_numpy(),
             "mk_sb.meerkat_id": df["sb.id"],
             "mk_sb.meerkat_id_code": df["sb.id_code"],
             "mk_sb.proposal_id": df["sb.proposal_id"],
@@ -410,16 +411,28 @@ def get_tiling_config_df(
         .str.split(",", expand=True)
         .rename(
             columns={
-                0: "target",
+                0: "tiling.target",
                 1: "mode",
-                2: "ra",
-                3: "dec",
+                2: "tiling.ra",
+                3: "tiling.dec",
             },
         )
         .drop(columns=["mode"])
     )
     tiling_df["tiling_config_id"] = tiling_df.index.to_numpy()
-    return tiling_df.drop(columns=["target"]).join(targets, how="outer")
+    tiling_df = tiling_df.join(targets, how="outer")
+    return tiling_df.rename(
+        columns={
+            "coordinate_type": "tiling.coordinate_type",
+            "epoch": "tiling.epoch",
+            "epoch_offset": "tiling.epoch_offset",
+            "method": "tiling.method",
+            "nbeams": "tiling.nbeams",
+            "overlap": "tiling.overlap",
+            "reference_frequency": "tiling.reference_frequency",
+            "shape": "tiling.shape",
+        },
+    )
 
 
 def get_beam_df(df: pd.DataFrame, obs_df: pd.DataFrame) -> pd.DataFrame:

@@ -7,9 +7,11 @@ import polars as pl
 from ska_ser_logging import configure_logging
 
 from ska_src_maltopuft_etl.core.config import config
-from ska_src_maltopuft_etl.meertrap.meertrap import extract, transform
+from ska_src_maltopuft_etl.meertrap.meertrap import extract, load, transform
 
-if __name__ == "__main__":
+
+def main() -> None:
+    """ska-src-maltopuft-etl entrypoint."""
     configure_logging(logging.INFO)
     logger = logging.getLogger(__name__)
 
@@ -22,4 +24,10 @@ if __name__ == "__main__":
     logger.info(f"Parsed data written to {output_parquet} successfully")
     raw_df = pl.read_parquet(output_parquet)
 
-    obs_df, beam_df, cand_df = transform(df=raw_df)
+    obs_df, beam_df, _ = transform(df=raw_df)
+
+    load(obs_df=obs_df, beam_df=beam_df)
+
+
+if __name__ == "__main__":
+    main()

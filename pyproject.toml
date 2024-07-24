@@ -133,6 +133,7 @@ ignore = [
     "D407",  # dashed-underline-after-section
     "G004",  # logging-f-string
     "INP001",  # implicit-namespace-package
+    "PD901",  # pandas-df-variable-name
     "PT012",  # `pytest.raises()` block should contain a single simple statement
     "S101", "S104",  # assert, possible binding to all interfaces
 ]
