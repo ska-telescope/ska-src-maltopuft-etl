@@ -30,6 +30,8 @@ pyaml = "^24.7.0"
 pandas = "^2.2.2"
 pyarrow = "^17.0.0"
 astropy = "^6.1.2"
+sqlalchemy = "^2.0.31"
+ska-src-maltopuft-backend = {url = "https://gitlab.com/ska-telescope/src/ska-src-maltopuft-backend/-/archive/main/ska-src-maltopuft-backend-main.zip"}
 
 
 [tool.poetry.group.dev.dependencies]
