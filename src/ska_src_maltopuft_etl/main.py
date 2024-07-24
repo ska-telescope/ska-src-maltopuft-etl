@@ -14,11 +14,12 @@ if __name__ == "__main__":
     logger = logging.getLogger(__name__)
 
     output_path: PosixPath = config.get("output_path", Path())
-    cand_df: pl.DataFrame = extract()
+    raw_df: pl.DataFrame = extract()
 
     output_parquet = output_path / "candidates.parquet"
     logger.info(f"Writing parsed data to {output_parquet}")
-    cand_df.write_parquet(output_parquet, compression="gzip")
+    raw_df.write_parquet(output_parquet, compression="gzip")
     logger.info(f"Parsed data written to {output_parquet} successfully")
-    cand_df = pl.read_parquet(output_parquet)
-    transform(df=cand_df.to_pandas())
+    raw_df = pl.read_parquet(output_parquet)
+
+    obs_df, beam_df, cand_df = transform(df=raw_df)
