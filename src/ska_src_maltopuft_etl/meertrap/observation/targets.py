@@ -1,4 +1,4 @@
-"""Target MALTOPUFT DB schema information."""
+"""Target MALTOPUFT DB observation metadata schema information."""
 
 from ska_src_maltopuft_etl.core import models
 

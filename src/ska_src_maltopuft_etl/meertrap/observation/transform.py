@@ -482,13 +482,15 @@ def get_beam_df(df: pd.DataFrame, obs_df: pd.DataFrame) -> pd.DataFrame:
     )
 
     # Expand beams list into rows
-    beam_df = beam_df.explode("beams")
+    beam_df = beam_df.explode("beams").reset_index()
 
     # Normalize beams dict into columns
     normalized_df = pd.json_normalize(beam_df["beams"].to_list())
-    beam_df = beam_df.join(normalized_df).drop(columns=["beams"])
-    beam_df["beam_id"] = beam_df.index.to_numpy()
-    return beam_df.rename(
+
+    beam_df = beam_df.merge(normalized_df, left_index=True, right_index=True)
+    beam_df = beam_df.drop(columns=["beams"])
+
+    beam_df = beam_df.rename(
         columns={
             "absnum": "beam.number",
             "coherent": "beam.coherent",
@@ -500,3 +502,18 @@ def get_beam_df(df: pd.DataFrame, obs_df: pd.DataFrame) -> pd.DataFrame:
             "source": "beam.source",
         },
     )
+    beam_df = beam_df.drop_duplicates(
+        subset=[
+            "beam.number",
+            "beam.coherent",
+            "beam.dec",
+            "host.ip_address",
+            "host.port",
+            "beam.ra",
+            "beam.relnum",
+            "beam.source",
+            "observation_id",
+        ],
+    )
+    beam_df["beam_id"] = beam_df.index.to_numpy()
+    return beam_df
