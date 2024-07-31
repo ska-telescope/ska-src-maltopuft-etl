@@ -10,6 +10,7 @@ import polars as pl
 from ska_src_maltopuft_etl.core.config import config
 from ska_src_maltopuft_etl.core.database import engine
 from ska_src_maltopuft_etl.database_loader import DatabaseLoader
+from ska_src_maltopuft_etl.meertrap.candidate.targets import candidate_targets
 from ska_src_maltopuft_etl.meertrap.observation.targets import (
     beam_targets,
     observation_targets,
@@ -87,16 +88,16 @@ def transform(
     df: pl.DataFrame,
 ) -> tuple[pl.DataFrame, pl.DataFrame, pl.DataFrame]:
     """Transform MeerTRAP data to MALTOPUFT DB schema."""
-    obs_pd, beams_pd = transform_observation(in_df=df)
+    obs_pd, beams_pd = transform_observation(df=df)
+    obs_df: pl.DataFrame = pl.from_pandas(obs_pd)
+    beam_df: pl.DataFrame = pl.from_pandas(beams_pd)
 
     output_path: PosixPath = config.get("output_path", Path())
-    obs_df: pl.DataFrame = pl.from_pandas(obs_pd)
+
     obs_df_parquet_path = output_path / "obs_df.parquet"
     logger.info(
         f"Writing transformed observation data to {obs_df_parquet_path}",
     )
-
-    beam_df: pl.DataFrame = pl.from_pandas(beams_pd)
     obs_df.write_parquet(obs_df_parquet_path)
     logger.info(
         "Successfully wrote transformed observation data to "
@@ -110,9 +111,7 @@ def transform(
         f"Successfully wrote transformed beam data to {beam_df_parquet_path}",
     )
 
-    cand_pd = transform_spccl(df_in=obs_df.to_pandas())
-
-    cand_df: pl.DataFrame = pl.from_pandas(cand_pd)
+    cand_df = transform_spccl(df=df, beam_df=beam_df)
     cand_df_parquet_path = output_path / "cand_df.parquet"
     logger.info(f"Writing transformed cand data to {cand_df_parquet_path}")
     cand_df.write_parquet(cand_df_parquet_path)
@@ -147,3 +146,6 @@ def load(
 
         beam_id_map = db.foreign_keys_map["beam_id"]
         cand_df["beam_id"] = cand_df["beam_id"].map(beam_id_map)
+
+        for target in candidate_targets:
+            cand_df = db.load_target(df=cand_df, target=target)

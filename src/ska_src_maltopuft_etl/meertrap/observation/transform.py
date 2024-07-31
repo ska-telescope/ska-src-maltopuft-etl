@@ -21,11 +21,11 @@ def get_base_df(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def transform_observation(
-    in_df: pl.DataFrame,
+    df: pl.DataFrame,
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
     """MeerTRAP observation transformation entrypoint."""
     # Sort raw data by ascending observation time
-    raw_df = in_df.to_pandas().sort_values(by=["utc_start"]).reset_index()
+    raw_df = df.to_pandas().sort_values(by=["utc_start"]).reset_index()
     out_df = get_base_df(df=raw_df)
 
     # Schedule block

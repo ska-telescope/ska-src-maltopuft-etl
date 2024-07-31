@@ -24,9 +24,12 @@ def main() -> None:
     logger.info(f"Parsed data written to {output_parquet} successfully")
     raw_df = pl.read_parquet(output_parquet)
 
-    obs_df, beam_df, _ = transform(df=raw_df)
-
-    load(obs_df=obs_df, beam_df=beam_df)
+    obs_df, beam_df, cand_df = transform(df=raw_df)
+    load(
+        obs_df=obs_df.to_pandas(),
+        beam_df=beam_df.to_pandas(),
+        cand_df=cand_df.to_pandas(),
+    )
 
 
 if __name__ == "__main__":
