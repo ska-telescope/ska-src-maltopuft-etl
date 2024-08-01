@@ -1671,13 +1671,13 @@ typing-extensions = ">=4.6.0,<4.7.0 || >4.7.0"
 
 [[package]]
 name = "pydantic-settings"
-version = "2.3.4"
+version = "2.4.0"
 description = "Settings management using Pydantic"
 optional = false
 python-versions = ">=3.8"
 files = [
-    {file = "pydantic_settings-2.3.4-py3-none-any.whl", hash = "sha256:11ad8bacb68a045f00e4f862c7a718c8a9ec766aa8fd4c32e39a0594b207b53a"},
-    {file = "pydantic_settings-2.3.4.tar.gz", hash = "sha256:c5802e3d62b78e82522319bbc9b8f8ffb28ad1c988a99311d04f2a6051fca0a7"},
+    {file = "pydantic_settings-2.4.0-py3-none-any.whl", hash = "sha256:bb6849dc067f1687574c12a639e231f3a6feeed0a12d710c1382045c5db1c315"},
+    {file = "pydantic_settings-2.4.0.tar.gz", hash = "sha256:ed81c3a0f46392b4d7c0a565c05884e6e54b3456e6f0fe4d8814981172dc9a88"},
 ]
 
 [package.dependencies]
@@ -1685,6 +1685,7 @@ pydantic = ">=2.7.0"
 python-dotenv = ">=0.21.0"
 
 [package.extras]
+azure-key-vault = ["azure-identity (>=1.16.0)", "azure-keyvault-secrets (>=4.8.0)"]
 toml = ["tomli (>=2.0.1)"]
 yaml = ["pyyaml (>=6.0.1)"]
 
@@ -2107,27 +2108,28 @@ version = "0.0.1"
 description = "MALTOPUFT backend service"
 optional = false
 python-versions = ">=3.10,<4.0.0"
-files = [
-    {file = "ska-src-maltopuft-backend-main.zip", hash = "sha256:d982089bcef4bcbfb5f732d2cee2389f12664053caf9cce750264367cf2c1f09"},
-]
+files = []
+develop = false
 
 [package.dependencies]
-alembic = ">=1.13.1,<2.0.0"
-email-validator = ">=2.1.1,<3.0.0"
-fastapi = ">=0.110.2,<0.111.0"
-httpx = ">=0.27.0,<0.28.0"
-itsdangerous = ">=2.2.0,<3.0.0"
-psycopg = {version = ">=3.1.18,<4.0.0", extras = ["binary", "c", "pool"]}
-pydantic-settings = ">=2.2.1,<3.0.0"
-pyjwt = ">=2.8.0,<3.0.0"
-requests = ">=2.31.0,<3.0.0"
-ska-ser-logging = ">=0.4.3,<0.5.0"
-sqlalchemy = ">=2.0.29,<3.0.0"
-uvicorn = {version = ">=0.27.1,<0.28.0", extras = ["standard"]}
+alembic = "^1.13.1"
+email-validator = "^2.1.1"
+fastapi = "^0.110.2"
+httpx = "^0.27.0"
+itsdangerous = "^2.2.0"
+psycopg = {version = "^3.1.18", extras = ["binary", "c", "pool"]}
+pydantic-settings = "^2.2.1"
+pyjwt = "^2.8.0"
+requests = "^2.31.0"
+ska-ser-logging = "^0.4.3"
+sqlalchemy = "^2.0.29"
+uvicorn = {version = "^0.27.1", extras = ["standard"]}
 
 [package.source]
-type = "url"
-url = "https://gitlab.com/ska-telescope/src/ska-src-maltopuft-backend/-/archive/main/ska-src-maltopuft-backend-main.zip"
+type = "git"
+url = "https://gitlab.com/ska-telescope/src/ska-src-maltopuft-backend.git"
+reference = "HEAD"
+resolved_reference = "3dc76d347b3dfaf0c234ea0a59c51d40be8aace6"
 
 [[package]]
 name = "sniffio"
@@ -2764,4 +2766,4 @@ files = [
 [metadata]
 lock-version = "2.0"
 python-versions = ">=3.10,<4.0.0"
-content-hash = "ddf737d7bf221ef5ff30bae8ad2f1b2e24225e2ca9d51ceb83afde16cdb994ae"
+content-hash = "a7890c78b7cae56b3217f99fb2276d3250b7f2dda77a59ac06497b30c229c586"

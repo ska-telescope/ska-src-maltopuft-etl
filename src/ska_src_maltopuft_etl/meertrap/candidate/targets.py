@@ -1,6 +1,6 @@
 """Target MALTOPUFT DB schema candidate information."""
 
-from ska_src_maltopuft_etl.core import models
+from ska_src_maltopuft_backend.app import models
 
 candidate_targets = [
     {
