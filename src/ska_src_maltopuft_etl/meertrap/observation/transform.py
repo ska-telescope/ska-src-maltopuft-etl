@@ -21,11 +21,11 @@ def get_base_df(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def transform_observation(
-    in_df: pl.DataFrame,
+    df: pl.DataFrame,
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
     """MeerTRAP observation transformation entrypoint."""
     # Sort raw data by ascending observation time
-    raw_df = in_df.to_pandas().sort_values(by=["utc_start"]).reset_index()
+    raw_df = df.to_pandas().sort_values(by=["utc_start"]).reset_index()
     out_df = get_base_df(df=raw_df)
 
     # Schedule block
@@ -159,6 +159,7 @@ def get_meerkat_sb_df(df: pd.DataFrame) -> pd.DataFrame:
     """Returns a dataframe with unique Meerkat schedule block rows."""
     meerkat_sb_df = pd.DataFrame(
         data={
+            "meerkat_schedule_block_id": df.index.to_numpy(),
             "mk_sb.meerkat_id": df["sb.id"],
             "mk_sb.meerkat_id_code": df["sb.id_code"],
             "mk_sb.proposal_id": df["sb.proposal_id"],
@@ -410,16 +411,28 @@ def get_tiling_config_df(
         .str.split(",", expand=True)
         .rename(
             columns={
-                0: "target",
+                0: "tiling.target",
                 1: "mode",
-                2: "ra",
-                3: "dec",
+                2: "tiling.ra",
+                3: "tiling.dec",
             },
         )
         .drop(columns=["mode"])
     )
     tiling_df["tiling_config_id"] = tiling_df.index.to_numpy()
-    return tiling_df.drop(columns=["target"]).join(targets, how="outer")
+    tiling_df = tiling_df.join(targets, how="outer")
+    return tiling_df.rename(
+        columns={
+            "coordinate_type": "tiling.coordinate_type",
+            "epoch": "tiling.epoch",
+            "epoch_offset": "tiling.epoch_offset",
+            "method": "tiling.method",
+            "nbeams": "tiling.nbeams",
+            "overlap": "tiling.overlap",
+            "reference_frequency": "tiling.reference_frequency",
+            "shape": "tiling.shape",
+        },
+    )
 
 
 def get_beam_df(df: pd.DataFrame, obs_df: pd.DataFrame) -> pd.DataFrame:
@@ -469,13 +482,15 @@ def get_beam_df(df: pd.DataFrame, obs_df: pd.DataFrame) -> pd.DataFrame:
     )
 
     # Expand beams list into rows
-    beam_df = beam_df.explode("beams")
+    beam_df = beam_df.explode("beams").reset_index()
 
     # Normalize beams dict into columns
     normalized_df = pd.json_normalize(beam_df["beams"].to_list())
-    beam_df = beam_df.join(normalized_df).drop(columns=["beams"])
-    beam_df["beam_id"] = beam_df.index.to_numpy()
-    return beam_df.rename(
+
+    beam_df = beam_df.merge(normalized_df, left_index=True, right_index=True)
+    beam_df = beam_df.drop(columns=["beams"])
+
+    beam_df = beam_df.rename(
         columns={
             "absnum": "beam.number",
             "coherent": "beam.coherent",
@@ -487,3 +502,18 @@ def get_beam_df(df: pd.DataFrame, obs_df: pd.DataFrame) -> pd.DataFrame:
             "source": "beam.source",
         },
     )
+    beam_df = beam_df.drop_duplicates(
+        subset=[
+            "beam.number",
+            "beam.coherent",
+            "beam.dec",
+            "host.ip_address",
+            "host.port",
+            "beam.ra",
+            "beam.relnum",
+            "beam.source",
+            "observation_id",
+        ],
+    )
+    beam_df["beam_id"] = beam_df.index.to_numpy()
+    return beam_df
