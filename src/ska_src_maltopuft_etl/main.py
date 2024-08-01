@@ -16,15 +16,18 @@ def main() -> None:
     logger = logging.getLogger(__name__)
 
     output_path: PosixPath = config.get("output_path", Path())
-    raw_df: pl.DataFrame = extract()
-
     output_parquet = output_path / "candidates.parquet"
-    logger.info(f"Writing parsed data to {output_parquet}")
-    raw_df.write_parquet(output_parquet, compression="gzip")
-    logger.info(f"Parsed data written to {output_parquet} successfully")
-    raw_df = pl.read_parquet(output_parquet)
+
+    try:
+        raw_df = pl.read_parquet(output_parquet)
+    except FileNotFoundError:
+        raw_df: pl.DataFrame = extract()
+        logger.info(f"Writing parsed data to {output_parquet}")
+        raw_df.write_parquet(output_parquet, compression="gzip")
+        logger.info(f"Parsed data written to {output_parquet} successfully")
 
     obs_df, beam_df, cand_df = transform(df=raw_df)
+
     load(
         obs_df=obs_df.to_pandas(),
         beam_df=beam_df.to_pandas(),
