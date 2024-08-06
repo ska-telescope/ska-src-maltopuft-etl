@@ -5,6 +5,8 @@ import logging
 import polars as pl
 from astropy.time import Time
 
+from ska_src_maltopuft_etl.meertrap import utils
+
 logger = logging.getLogger(__name__)
 
 
@@ -57,6 +59,13 @@ def transform_candidate(
             "dec": "cand.dec",
             "width": "cand.width",
         },
+    )
+
+    cand_df = cand_df.with_columns(
+        pl.col("cand.ra").map_elements(utils.transform_ra_hms, pl.String),
+    )
+    cand_df = cand_df.with_columns(
+        pl.col("cand.dec").map_elements(utils.transform_dec_dms, pl.String),
     )
 
     # Add cand.pos=(ra,dec) for querying with pgSphere
