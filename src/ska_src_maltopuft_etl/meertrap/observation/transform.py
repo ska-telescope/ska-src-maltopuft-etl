@@ -364,6 +364,16 @@ def get_obs_df(
     ]
 
 
+def transform_ra_hms(ra: str) -> str:
+    """Transform ra string from `00:00:00.0` to `00h00m00.0s` format."""
+    return ra.replace(":", "h", 1).replace(":", "m", 1) + "s"
+
+
+def transform_dec_dms(dec: str) -> str:
+    """Transform dec string from `00:00:00.0` to `00d00m00.0s` format."""
+    return dec.replace(":", "d", 1).replace(":", "m", 1) + "s"
+
+
 def get_tiling_config_df(
     df: pd.DataFrame,
     obs_df: pd.DataFrame,
@@ -419,6 +429,10 @@ def get_tiling_config_df(
         )
         .drop(columns=["mode"])
     )
+
+    targets["tiling.ra"] = targets["tiling.ra"].apply(transform_ra_hms)
+    targets["tiling.dec"] = targets["tiling.dec"].apply(transform_dec_dms)
+
     tiling_df["tiling_config_id"] = tiling_df.index.to_numpy()
     tiling_df = tiling_df.join(targets, how="outer")
     return tiling_df.rename(
@@ -502,6 +516,10 @@ def get_beam_df(df: pd.DataFrame, obs_df: pd.DataFrame) -> pd.DataFrame:
             "source": "beam.source",
         },
     )
+
+    beam_df["beam.ra"] = beam_df["beam.ra"].apply(transform_ra_hms)
+    beam_df["beam.dec"] = beam_df["beam.dec"].apply(transform_dec_dms)
+
     beam_df = beam_df.drop_duplicates(
         subset=[
             "beam.number",
