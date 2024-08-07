@@ -31,6 +31,7 @@ pandas = "^2.2.2"
 pyarrow = "^17.0.0"
 astropy = "^6.1.2"
 sqlalchemy = "^2.0.31"
+psrqpy = "^1.2.10"
 ska-src-maltopuft-backend = {git = "https://gitlab.com/ska-telescope/src/ska-src-maltopuft-backend.git"}
 
 
