@@ -6,6 +6,7 @@ import logging
 import polars as pl
 from psrqpy import ATNF_BASE_URL, QueryATNF
 
+from ska_src_maltopuft_etl import utils
 from ska_src_maltopuft_etl.atnf.params import query_param_mapping
 from ska_src_maltopuft_etl.atnf.targets import targets
 from ska_src_maltopuft_etl.core.database import engine
@@ -14,7 +15,7 @@ from ska_src_maltopuft_etl.database_loader import DatabaseLoader
 logger = logging.getLogger(__name__)
 
 
-def trim_ra_dec_str(coord: str, length: int = 12) -> str:
+def trim_ra_dec_str(coord: str, length: int = 11) -> str:
     """Trims a string to the specified length."""
     if len(coord) > length:
         return coord[:length]
@@ -36,6 +37,20 @@ def main() -> None:
     df = df.with_columns(
         pl.col("known_ps.ra").map_elements(trim_ra_dec_str, pl.String),
         pl.col("known_ps.dec").map_elements(trim_ra_dec_str, pl.String),
+    )
+    df = df.with_columns(
+        pl.col("known_ps.ra").map_elements(utils.format_ra_hms, pl.String),
+        pl.col("known_ps.dec").map_elements(
+            utils.format_dec_dms,
+            pl.String,
+        ),
+    )
+
+    # Add known_ps.pos=(ra,dec) for querying with pgSphere
+    df = df.with_columns(
+        pl.concat_str(["known_ps.ra", "known_ps.dec"], separator=",")
+        .alias("known_ps.pos")
+        .map_elements(utils.add_parenthesis, pl.String),
     )
 
     df = df.with_columns(

@@ -6,6 +6,7 @@ import datetime as dt
 import pandas as pd
 import polars as pl
 
+from ska_src_maltopuft_etl import utils
 from ska_src_maltopuft_etl.core.exceptions import UnexpectedShapeError
 from ska_src_maltopuft_etl.meertrap.candidate.extract import SPCCL_COLUMNS
 
@@ -419,6 +420,12 @@ def get_tiling_config_df(
         )
         .drop(columns=["mode"])
     )
+
+    targets["tiling.ra"] = targets["tiling.ra"].apply(utils.format_ra_hms)
+    targets["tiling.dec"] = targets["tiling.dec"].apply(
+        utils.format_dec_dms,
+    )
+
     tiling_df["tiling_config_id"] = tiling_df.index.to_numpy()
     tiling_df = tiling_df.join(targets, how="outer")
     return tiling_df.rename(
@@ -502,6 +509,10 @@ def get_beam_df(df: pd.DataFrame, obs_df: pd.DataFrame) -> pd.DataFrame:
             "source": "beam.source",
         },
     )
+
+    beam_df["beam.ra"] = beam_df["beam.ra"].apply(utils.format_ra_hms)
+    beam_df["beam.dec"] = beam_df["beam.dec"].apply(utils.format_dec_dms)
+
     beam_df = beam_df.drop_duplicates(
         subset=[
             "beam.number",
