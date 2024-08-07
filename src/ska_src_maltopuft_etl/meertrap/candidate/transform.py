@@ -5,7 +5,7 @@ import logging
 import polars as pl
 from astropy.time import Time
 
-from ska_src_maltopuft_etl.meertrap import utils
+from ska_src_maltopuft_etl import utils
 
 logger = logging.getLogger(__name__)
 
@@ -30,11 +30,6 @@ def mjd_2_datetime_str(mjd: float) -> str:
     """
     t = Time([str(mjd)], format="mjd")
     return t.isot[0]
-
-
-def add_parenthesis(s: str) -> str:
-    """Wrap a string in parenthesis."""
-    return f"({s})"
 
 
 def transform_candidate(
@@ -62,17 +57,17 @@ def transform_candidate(
     )
 
     cand_df = cand_df.with_columns(
-        pl.col("cand.ra").map_elements(utils.transform_ra_hms, pl.String),
+        pl.col("cand.ra").map_elements(utils.format_ra_hms, pl.String),
     )
     cand_df = cand_df.with_columns(
-        pl.col("cand.dec").map_elements(utils.transform_dec_dms, pl.String),
+        pl.col("cand.dec").map_elements(utils.format_dec_dms, pl.String),
     )
 
     # Add cand.pos=(ra,dec) for querying with pgSphere
     cand_df = cand_df.with_columns(
         pl.concat_str(["cand.ra", "cand.dec"], separator=",")
         .alias("cand.pos")
-        .map_elements(add_parenthesis, pl.String),
+        .map_elements(utils.add_parenthesis, pl.String),
     )
 
     cand_df = cand_df.with_row_index(name="candidate_id", offset=1)
