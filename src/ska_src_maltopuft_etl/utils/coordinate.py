@@ -6,7 +6,7 @@ def format_ms(coord: str) -> str:
     if coord.find(":") > 0:
         coord = coord.replace(":", "m", 1) + "s"
     else:
-        coord += "m"
+        coord += "m00s"
     return coord
 
 
