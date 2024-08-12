@@ -1,5 +1,6 @@
 """MeerTRAP candidate data to MALTOPUFT DB transformations."""
 
+import datetime as dt
 import logging
 
 import polars as pl
@@ -18,7 +19,7 @@ def transform_spccl(df: pl.DataFrame, beam_df: pl.DataFrame) -> pl.DataFrame:
     )
 
 
-def mjd_2_datetime_str(mjd: float) -> str:
+def mjd_2_datetime(mjd: float) -> dt.datetime:
     """Convert an MJD value to a ISO 8601 string.
 
     Args:
@@ -29,7 +30,9 @@ def mjd_2_datetime_str(mjd: float) -> str:
 
     """
     t = Time([str(mjd)], format="mjd")
-    return t.isot[0]
+    return dt.datetime.strptime(t.isot[0], "%Y-%m-%dT%H:%M:%S.%f").replace(
+        tzinfo=dt.timezone.utc,  # noqa: UP017
+    )
 
 
 def transform_candidate(
@@ -88,9 +91,11 @@ def transform_sp_candidate(candidate_df: pl.DataFrame) -> pl.DataFrame:
     """
     sp_df = candidate_df.with_columns(
         pl.col("mjd")
-        .map_elements(mjd_2_datetime_str, pl.String)
+        .map_elements(mjd_2_datetime, pl.Datetime)
+        .dt.replace_time_zone("UTC")
         .alias("observed_at"),
     ).drop("mjd")
+
     sp_df = sp_df.with_row_index(name="sp_candidate_id", offset=1)
     return sp_df.rename(
         {
