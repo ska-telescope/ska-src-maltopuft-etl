@@ -33,9 +33,6 @@ observation_targets = [
         "primary_key": "tiling_config_id",
         "foreign_keys": ["observation_id"],
     },
-]
-
-beam_targets = [
     {
         "model_class": models.Host,
         "table_prefix": "host.",

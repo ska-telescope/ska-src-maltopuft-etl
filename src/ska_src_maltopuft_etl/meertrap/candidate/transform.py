@@ -11,12 +11,10 @@ from ska_src_maltopuft_etl import utils
 logger = logging.getLogger(__name__)
 
 
-def transform_spccl(df: pl.DataFrame, beam_df: pl.DataFrame) -> pl.DataFrame:
+def transform_spccl(df: pl.DataFrame, obs_df: pl.DataFrame) -> pl.DataFrame:
     """MeerTRAP candidate transformation entrypoint."""
-    candidate_df = transform_candidate(df=df, beam_df=beam_df)
-    return transform_sp_candidate(
-        candidate_df=candidate_df,
-    )
+    candidate_df = transform_candidate(df=df, obs_df=obs_df)
+    return transform_sp_candidate(candidate_df=candidate_df)
 
 
 def mjd_2_datetime(mjd: float) -> dt.datetime:
@@ -37,18 +35,28 @@ def mjd_2_datetime(mjd: float) -> dt.datetime:
 
 def transform_candidate(
     df: pl.DataFrame,
-    beam_df: pl.DataFrame,
+    obs_df: pl.DataFrame,
 ) -> pl.DataFrame:
-    """Returns a dataframe whose rows contain unique Candidate model data."""
-    logger.info("Started transforming candidate data")
+    """Returns a dataframe whose rows contain unique Candidate model data.
+
+    Args:
+        df (pl.DataFrame): Raw, untransformed DataFrame.
+        obs_df (pl.DataFrame): Transformed observatation metadata DataFrame.
+
+    Returns:
+        pl.DataFrame: Unique Candidate data.
+
+    """
     logger.info("Joining beam and candidate data")
     cand_df = (
         df.lazy()
-        .join(beam_df.lazy(), on=["candidate"], how="cross", coalesce=True)
+        .join(obs_df.lazy(), on=["candidate"], how="inner", coalesce=True)
         .unique(subset=["candidate", "beam", "beam.number"])
         .filter(pl.col("beam") == pl.col("beam.number"))
     ).collect(streaming=True)
     logger.info("Successfully joined beam and candidate data")
+
+    logger.info("Started transforming candidate data")
     cand_df = cand_df.rename(
         {
             "dm": "cand.dm",

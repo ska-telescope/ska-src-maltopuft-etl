@@ -23,7 +23,7 @@ def get_base_df(df: pd.DataFrame) -> pd.DataFrame:
 
 def transform_observation(
     df: pl.DataFrame,
-) -> tuple[pd.DataFrame, pd.DataFrame]:
+) -> pd.DataFrame:
     """MeerTRAP observation transformation entrypoint."""
     # Sort raw data by ascending observation time
     raw_df = df.to_pandas().sort_values(by=["utc_start"]).reset_index()
@@ -60,7 +60,7 @@ def transform_observation(
     obs_df = get_obs_df(df=obs_uniq_df, sb_df=sb_df)
     obs_df = obs_df.merge(
         coherent_beam_config_df,
-        on="candidate",
+        on=["candidate"],
         validate="many_to_one",
     ).drop(
         columns="candidate",
@@ -73,10 +73,10 @@ def transform_observation(
     )
 
     tiling_df = get_tiling_config_df(df=obs_uniq_df, obs_df=obs_df)
-    out_df = tiling_df.merge(
-        out_df,
+    out_df = out_df.merge(
+        tiling_df,
         on="observation_id",
-        how="inner",
+        how="left",
         validate="many_to_many",
     )
 
@@ -90,18 +90,26 @@ def transform_observation(
         on=["host.ip_address", "host.hostname"],
         how="left",
     )
+
     if beam_df["host_id"].isna().to_numpy().any():
         msg = "Merge resulted in null host_id."
         raise UnexpectedShapeError(msg)
 
     out_df = out_df.merge(
         beam_df,
-        on=["candidate", "observation_id"],
-        how="left",
+        on=["observation_id"],
+        how="outer",
         validate="many_to_many",
     )
+    out_df = out_df.drop(columns="candidate_y").rename(
+        columns={"candidate_x": "candidate"},
+    )
 
-    return out_df, beam_df
+    if out_df["host_id"].isna().to_numpy().any():
+        msg = "Merge resulted in null host_id."
+        raise UnexpectedShapeError(msg)
+
+    return out_df
 
 
 def get_sb_df(df: pd.DataFrame) -> pd.DataFrame:
