@@ -26,11 +26,9 @@ def main() -> None:
         raw_df.write_parquet(output_parquet, compression="gzip")
         logger.info(f"Parsed data written to {output_parquet} successfully")
 
-    obs_df, beam_df, cand_df = transform(df=raw_df)
-
+    obs_df, cand_df = transform(df=raw_df)
     load(
         obs_df=obs_df.to_pandas(),
-        beam_df=beam_df.to_pandas(),
         cand_df=cand_df.to_pandas(),
     )
 

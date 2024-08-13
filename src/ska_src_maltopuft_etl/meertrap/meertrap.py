@@ -12,7 +12,6 @@ from ska_src_maltopuft_etl.core.database import engine
 from ska_src_maltopuft_etl.database_loader import DatabaseLoader
 from ska_src_maltopuft_etl.meertrap.candidate.targets import candidate_targets
 from ska_src_maltopuft_etl.meertrap.observation.targets import (
-    beam_targets,
     observation_targets,
 )
 
@@ -86,11 +85,10 @@ def extract(
 
 def transform(
     df: pl.DataFrame,
-) -> tuple[pl.DataFrame, pl.DataFrame, pl.DataFrame]:
+) -> tuple[pl.DataFrame, pl.DataFrame]:
     """Transform MeerTRAP data to MALTOPUFT DB schema."""
-    obs_pd, beams_pd = transform_observation(df=df)
+    obs_pd = transform_observation(df=df)
     obs_df: pl.DataFrame = pl.from_pandas(obs_pd)
-    beam_df: pl.DataFrame = pl.from_pandas(beams_pd)
 
     output_path: PosixPath = config.get("output_path", Path())
 
@@ -104,14 +102,7 @@ def transform(
         f"{obs_df_parquet_path}",
     )
 
-    beam_df_parquet_path = output_path / "beams_df.parquet"
-    logger.info(f"Writing transformed beam data to {beam_df_parquet_path}")
-    beam_df.write_parquet(beam_df_parquet_path)
-    logger.info(
-        f"Successfully wrote transformed beam data to {beam_df_parquet_path}",
-    )
-
-    cand_df = transform_spccl(df=df, beam_df=beam_df)
+    cand_df = transform_spccl(df=df, obs_df=obs_df)
     cand_df_parquet_path = output_path / "cand_df.parquet"
     logger.info(f"Writing transformed cand data to {cand_df_parquet_path}")
     cand_df.write_parquet(cand_df_parquet_path)
@@ -119,12 +110,11 @@ def transform(
         f"Successfully wrote transformed cand data to {cand_df_parquet_path}",
     )
 
-    return obs_df, beam_df, cand_df
+    return obs_df, cand_df
 
 
 def load(
     obs_df: pd.DataFrame,
-    beam_df: pd.DataFrame,
     cand_df: pd.DataFrame,
 ) -> None:
     """Load MeerTRAP data into a database."""
@@ -135,14 +125,6 @@ def load(
                 df=obs_df,
                 target=target,
             )
-
-        observation_id_map = db.foreign_keys_map["observation_id"]
-        beam_df["observation_id"] = beam_df["observation_id"].map(
-            observation_id_map,
-        )
-
-        for target in beam_targets:
-            beam_df = db.load_target(df=beam_df, target=target)
 
         beam_id_map = db.foreign_keys_map["beam_id"]
         cand_df["beam_id"] = cand_df["beam_id"].map(beam_id_map)

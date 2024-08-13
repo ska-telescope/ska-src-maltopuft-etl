@@ -1,5 +1,6 @@
 """MeerTRAP candidate data to MALTOPUFT DB transformations."""
 
+import datetime as dt
 import logging
 
 import polars as pl
@@ -10,15 +11,13 @@ from ska_src_maltopuft_etl import utils
 logger = logging.getLogger(__name__)
 
 
-def transform_spccl(df: pl.DataFrame, beam_df: pl.DataFrame) -> pl.DataFrame:
+def transform_spccl(df: pl.DataFrame, obs_df: pl.DataFrame) -> pl.DataFrame:
     """MeerTRAP candidate transformation entrypoint."""
-    candidate_df = transform_candidate(df=df, beam_df=beam_df)
-    return transform_sp_candidate(
-        candidate_df=candidate_df,
-    )
+    candidate_df = transform_candidate(df=df, obs_df=obs_df)
+    return transform_sp_candidate(candidate_df=candidate_df)
 
 
-def mjd_2_datetime_str(mjd: float) -> str:
+def mjd_2_datetime(mjd: float) -> dt.datetime:
     """Convert an MJD value to a ISO 8601 string.
 
     Args:
@@ -29,23 +28,35 @@ def mjd_2_datetime_str(mjd: float) -> str:
 
     """
     t = Time([str(mjd)], format="mjd")
-    return t.isot[0]
+    return dt.datetime.strptime(t.isot[0], "%Y-%m-%dT%H:%M:%S.%f").replace(
+        tzinfo=dt.timezone.utc,  # noqa: UP017
+    )
 
 
 def transform_candidate(
     df: pl.DataFrame,
-    beam_df: pl.DataFrame,
+    obs_df: pl.DataFrame,
 ) -> pl.DataFrame:
-    """Returns a dataframe whose rows contain unique Candidate model data."""
-    logger.info("Started transforming candidate data")
+    """Returns a dataframe whose rows contain unique Candidate model data.
+
+    Args:
+        df (pl.DataFrame): Raw, untransformed DataFrame.
+        obs_df (pl.DataFrame): Transformed observatation metadata DataFrame.
+
+    Returns:
+        pl.DataFrame: Unique Candidate data.
+
+    """
     logger.info("Joining beam and candidate data")
     cand_df = (
         df.lazy()
-        .join(beam_df.lazy(), on=["candidate"], how="cross", coalesce=True)
+        .join(obs_df.lazy(), on=["candidate"], how="inner", coalesce=True)
         .unique(subset=["candidate", "beam", "beam.number"])
         .filter(pl.col("beam") == pl.col("beam.number"))
     ).collect(streaming=True)
     logger.info("Successfully joined beam and candidate data")
+
+    logger.info("Started transforming candidate data")
     cand_df = cand_df.rename(
         {
             "dm": "cand.dm",
@@ -88,9 +99,11 @@ def transform_sp_candidate(candidate_df: pl.DataFrame) -> pl.DataFrame:
     """
     sp_df = candidate_df.with_columns(
         pl.col("mjd")
-        .map_elements(mjd_2_datetime_str, pl.String)
+        .map_elements(mjd_2_datetime, pl.Datetime)
+        .dt.replace_time_zone("UTC")
         .alias("observed_at"),
     ).drop("mjd")
+
     sp_df = sp_df.with_row_index(name="sp_candidate_id", offset=1)
     return sp_df.rename(
         {
