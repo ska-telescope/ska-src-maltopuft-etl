@@ -3,6 +3,7 @@
 import logging
 from typing import Any
 
+import numpy as np
 import pandas as pd
 import sqlalchemy as sa
 
@@ -148,6 +149,7 @@ class DatabaseLoader:
             Updated DataFrame with inserted IDs.
 
         """
+        df = df.replace({np.nan: None})
         try:
             df = self._insert_table(
                 df=df,

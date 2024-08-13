@@ -425,6 +425,17 @@ def get_tiling_config_df(
     targets["tiling.dec"] = targets["tiling.dec"].apply(
         utils.format_dec_dms,
     )
+    targets["tiling.pos"] = [
+        f"({ra.lstrip()},{dec.lstrip()})"
+        for ra, dec in zip(
+            targets["tiling.ra"].to_numpy(),
+            targets["tiling.dec"].to_numpy(),
+            strict=False,
+        )
+    ]
+
+    targets["obs.s_ra"] = targets["tiling.ra"].to_numpy()
+    targets["obs.s_dec"] = targets["tiling.dec"].to_numpy()
 
     tiling_df["tiling_config_id"] = tiling_df.index.to_numpy()
     tiling_df = tiling_df.join(targets, how="outer")

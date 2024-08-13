@@ -3,10 +3,12 @@
 
 def format_ms(coord: str) -> str:
     """Format arc minute and arc second string."""
+    if coord.find(".") > 0:
+        coord = coord[: coord.find(".")]
     if coord.find(":") > 0:
         coord = coord.replace(":", "m", 1) + "s"
     else:
-        coord += "m"
+        coord += "m00s"
     return coord
 
 
