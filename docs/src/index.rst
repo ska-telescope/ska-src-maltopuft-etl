@@ -20,6 +20,8 @@
   :hidden:
 
   pages/maltopuft-etl.rst
+  pages/meertrap.rst
+  pages/atnf.rst
 
 .. API documentation =============================================
 ..
