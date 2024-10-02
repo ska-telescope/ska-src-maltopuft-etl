@@ -24,7 +24,7 @@ def trim_ra_dec_str(coord: str, length: int = 11) -> str:
 
 def main() -> None:
     """ETL routine for ATNF pulsar catalogue to MALTOPUFT DB."""
-    query = QueryATNF(params=list(query_param_mapping.keys()))
+    query = QueryATNF(params=list(query_param_mapping.keys()), version="2.3.0")
     visited_at = dt.datetime.now(tz=dt.timezone.utc)  # noqa: UP017
 
     df = pl.from_pandas(query.pandas)
