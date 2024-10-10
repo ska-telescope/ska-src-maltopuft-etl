@@ -9,6 +9,8 @@ import polars as pl
 
 from ska_src_maltopuft_etl.core.config import config
 from ska_src_maltopuft_etl.core.database import engine
+from ska_src_maltopuft_etl.core.exceptions import DuplicateInsertError
+from ska_src_maltopuft_etl.core.insert import insert_
 from ska_src_maltopuft_etl.database_loader import DatabaseLoader
 from ska_src_maltopuft_etl.meertrap.candidate.targets import candidate_targets
 from ska_src_maltopuft_etl.meertrap.observation.targets import (

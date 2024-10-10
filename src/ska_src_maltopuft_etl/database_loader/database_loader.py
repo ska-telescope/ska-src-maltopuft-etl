@@ -112,18 +112,11 @@ class DatabaseLoader:
         """
         table_df = self._prepare_table_for_insert(df=df, target=target)
 
-        try:
-            inserted_ids = insert_(
-                conn=conn,
-                model_class=target["model_class"],
-                data=table_df.to_dict(orient="records"),
-            )
-        except Exception as e:
-            msg = (
-                "Failed to insert data into "
-                f"{target.get('model_class').__table__.name}"
-            )
-            raise RuntimeError(msg) from e
+        inserted_ids = insert_(
+            conn=conn,
+            model_class=target["model_class"],
+            data=table_df.to_dict(orient="records"),
+        )
 
         primary_key = target["primary_key"]
         self.foreign_keys_map[primary_key] = dict(
@@ -150,13 +143,8 @@ class DatabaseLoader:
 
         """
         df = df.replace({np.nan: None})
-        try:
-            df = self._insert_table(
-                df=df,
-                conn=self.conn,
-                target=target,
-            )
-        except Exception as e:
-            msg = "Failed to load observation data"
-            raise RuntimeError(msg) from e
-        return df
+        return self._insert_table(
+            df=df,
+            conn=self.conn,
+            target=target,
+        )
