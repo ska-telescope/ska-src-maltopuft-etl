@@ -433,14 +433,6 @@ def get_tiling_config_df(
     targets["tiling.dec"] = targets["tiling.dec"].apply(
         utils.format_dec_dms,
     )
-    targets["tiling.pos"] = [
-        f"({ra.lstrip()},{dec.lstrip()})"
-        for ra, dec in zip(
-            targets["tiling.ra"].to_numpy(),
-            targets["tiling.dec"].to_numpy(),
-            strict=False,
-        )
-    ]
 
     targets["obs.s_ra"] = targets["tiling.ra"].to_numpy()
     targets["obs.s_dec"] = targets["tiling.dec"].to_numpy()
@@ -545,5 +537,6 @@ def get_beam_df(df: pd.DataFrame, obs_df: pd.DataFrame) -> pd.DataFrame:
             "observation_id",
         ],
     )
+    beam_df = beam_df.drop(columns=["beam.relnum", "beam.source"])
     beam_df["beam_id"] = beam_df.index.to_numpy()
     return beam_df

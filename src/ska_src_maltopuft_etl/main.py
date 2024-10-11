@@ -1,7 +1,7 @@
 """ska-src-maltopuft-etl entrypoint."""
 
 import logging
-from pathlib import Path, PosixPath
+from pathlib import Path
 
 import polars as pl
 from ska_ser_logging import configure_logging
@@ -15,7 +15,7 @@ def main() -> None:
     configure_logging(logging.INFO)
     logger = logging.getLogger(__name__)
 
-    output_path: PosixPath = config.get("output_path", Path())
+    output_path: Path = config.get("output_path", Path())
     output_parquet = output_path / "candidates.parquet"
 
     try:
@@ -27,9 +27,10 @@ def main() -> None:
         logger.info(f"Parsed data written to {output_parquet} successfully")
 
     try:
-        obs_df = pl.read_parquet(output_path / "observations.parquet")
-        cand_df = pl.read_parquet(output_path / "candidates.parquet")
+        obs_df = pl.read_parquet(output_path / "obs_df.parquet")
+        cand_df = pl.read_parquet(output_path / "cand_df.parquet")
     except FileNotFoundError:
+        logger.warning("No cached transformed data found")
         obs_df, cand_df = transform(df=raw_df)
 
     load(

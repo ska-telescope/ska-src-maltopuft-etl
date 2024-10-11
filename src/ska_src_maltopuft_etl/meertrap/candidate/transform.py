@@ -14,7 +14,32 @@ logger = logging.getLogger(__name__)
 def transform_spccl(df: pl.DataFrame, obs_df: pl.DataFrame) -> pl.DataFrame:
     """MeerTRAP candidate transformation entrypoint."""
     candidate_df = transform_candidate(df=df, obs_df=obs_df)
-    return transform_sp_candidate(candidate_df=candidate_df)
+    candidate_df = transform_sp_candidate(candidate_df=candidate_df)
+
+    # Deduplicate candidates
+    initial_cand_num = len(candidate_df)
+    logger.info(
+        f"Removing duplicate candidates from {initial_cand_num} records",
+    )
+    candidate_df = candidate_df.sort(by="candidate").unique(
+        subset=[
+            "cand.dm",
+            "cand.snr",
+            "cand.ra",
+            "cand.dec",
+            "cand.width",
+            "cand.observed_at",
+            "beam_id",
+        ],
+        maintain_order=True,
+        # Records are sorted by unix timestamp of candidate detection
+        keep="first",
+    )
+    logger.info(
+        f"Successfully removed {initial_cand_num-len(candidate_df)} "
+        f"duplicate candidates. {len(candidate_df)} records remaining",
+    )
+    return candidate_df
 
 
 def mjd_2_datetime(mjd: float) -> dt.datetime:
@@ -90,6 +115,7 @@ def transform_candidate(
     )
 
     cand_df = cand_df.with_row_index(name="candidate_id", offset=1)
+
     logger.info("Successfully transformed candidate data.")
     return cand_df
 

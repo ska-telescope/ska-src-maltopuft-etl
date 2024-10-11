@@ -65,7 +65,7 @@ class DatabaseLoader:
         table_df.columns = table_df.columns.str.replace(table_prefix, "")
         return table_df
 
-    def _prepare_table_for_insert(
+    def prepare_data_for_insert(
         self,
         df: pd.DataFrame,
         target: dict[str, Any],
@@ -110,7 +110,7 @@ class DatabaseLoader:
             DataFrame with updated primary keys.
 
         """
-        table_df = self._prepare_table_for_insert(df=df, target=target)
+        table_df = self.prepare_data_for_insert(df=df, target=target)
 
         inserted_ids = insert_(
             conn=conn,
@@ -148,3 +148,13 @@ class DatabaseLoader:
             conn=self.conn,
             target=target,
         )
+
+    def update_foreign_keys_map(
+        self,
+        primary_key_name: str,
+        initial_value: int,
+        update_value: int
+    ) -> None:
+        if self.foreign_keys_map.get(primary_key_name) is None:
+            self.foreign_keys_map[primary_key_name] = {}
+        self.foreign_keys_map[primary_key_name][initial_value] = update_value
