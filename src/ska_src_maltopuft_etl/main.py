@@ -26,7 +26,12 @@ def main() -> None:
         raw_df.write_parquet(output_parquet, compression="gzip")
         logger.info(f"Parsed data written to {output_parquet} successfully")
 
-    obs_df, cand_df = transform(df=raw_df)
+    try:
+        obs_df = pl.read_parquet(output_path / "observations.parquet")
+        cand_df = pl.read_parquet(output_path / "candidates.parquet")
+    except FileNotFoundError:
+        obs_df, cand_df = transform(df=raw_df)
+
     load(
         obs_df=obs_df.to_pandas(),
         cand_df=cand_df.to_pandas(),
