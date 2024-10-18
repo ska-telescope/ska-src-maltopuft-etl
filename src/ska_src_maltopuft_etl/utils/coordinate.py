@@ -14,6 +14,7 @@ def format_ms(coord: str) -> str:
 
 def format_ra_hms(ra: str) -> str:
     """Transform ra string from `00:00:00.0` to `00h00m00.0s`."""
+    ra = ra.replace(" ", "")
     ra = ra.replace(":", "h", 1)
     return format_ms(coord=ra)
 
