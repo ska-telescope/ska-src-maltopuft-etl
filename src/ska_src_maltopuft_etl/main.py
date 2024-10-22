@@ -21,7 +21,7 @@ def main() -> None:
     try:
         raw_df = pl.read_parquet(output_parquet)
     except FileNotFoundError:
-        raw_df: pl.DataFrame = extract()
+        raw_df = extract()
         logger.info(f"Writing parsed data to {output_parquet}")
         raw_df.write_parquet(output_parquet, compression="gzip")
         logger.info(f"Parsed data written to {output_parquet} successfully")

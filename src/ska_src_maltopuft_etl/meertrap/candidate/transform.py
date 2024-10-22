@@ -15,6 +15,7 @@ def transform_spccl(df: pl.DataFrame, obs_df: pl.DataFrame) -> pl.DataFrame:
     """MeerTRAP candidate transformation entrypoint."""
     candidate_df = transform_candidate(df=df, obs_df=obs_df)
     candidate_df = transform_sp_candidate(candidate_df=candidate_df)
+    candidate_df = candidate_df.sort(by="candidate")
 
     # Deduplicate candidates
     initial_cand_num = len(candidate_df)
@@ -35,6 +36,7 @@ def transform_spccl(df: pl.DataFrame, obs_df: pl.DataFrame) -> pl.DataFrame:
         # Records are sorted by unix timestamp of candidate detection
         keep="first",
     )
+
     logger.info(
         f"Successfully removed {initial_cand_num-len(candidate_df)} "
         f"duplicate candidates. {len(candidate_df)} records remaining",
@@ -98,7 +100,6 @@ def transform_candidate(
         .dt.replace_time_zone("UTC")
         .alias("cand.observed_at"),
     ).drop("mjd")
-    logger.info(f"cols are {cand_df.columns}")
 
     cand_df = cand_df.with_columns(
         pl.col("cand.ra").map_elements(utils.format_ra_hms, pl.String),

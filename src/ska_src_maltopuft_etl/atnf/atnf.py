@@ -68,7 +68,7 @@ def main() -> None:
     with engine.connect() as conn, conn.begin():
         db = DatabaseLoader(conn=conn)
         for target in targets:
-            df = db.load_target(
+            df = db.insert_target(
                 df=df,
                 target=target,
             )
