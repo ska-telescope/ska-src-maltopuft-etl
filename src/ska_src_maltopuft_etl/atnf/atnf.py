@@ -3,6 +3,7 @@
 import datetime as dt
 import logging
 
+import pandas as pd
 import polars as pl
 from psrqpy import ATNF_BASE_URL, QueryATNF
 
@@ -22,16 +23,37 @@ def trim_ra_dec_str(coord: str, length: int = 11) -> str:
     return coord
 
 
-def main() -> None:
-    """ETL routine for ATNF pulsar catalogue to MALTOPUFT DB."""
+def extract() -> pl.DataFrame:
+    """Extract ATNF pulsar catalogue data.
+
+    Returns
+        pl.DataFrame: DataFrame containing ATNF pulsar catalogue and
+        visit data.
+
+    """
     query = QueryATNF(params=list(query_param_mapping.keys()), version="2.3.0")
     visited_at = dt.datetime.now(tz=dt.timezone.utc)  # noqa: UP017
-
     df = pl.from_pandas(query.pandas)
-    df = df.drop([col for col in df.columns if col.endswith("_ERR")])
-    df = df.rename(query_param_mapping)
-    df = df.with_row_index(name="known_pulsar_id", offset=1)
+    return (
+        df.drop([col for col in df.columns if col.endswith("_ERR")])
+        .rename(query_param_mapping)
+        .with_row_index(name="known_pulsar_id", offset=1)
+        .with_columns(
+            pl.lit(visited_at).alias("cat_visit.visited_at"),
+        )
+    )
 
+
+def transform(df: pl.DataFrame) -> pl.DataFrame:
+    """Transform ATNF pulsar catalogue data into MALTOPUFTDB schema.
+
+    Args:
+        df (pl.DataFrame): Raw ATNF catalogue and visit data.
+
+    Returns:
+        pl.DataFrame: Transformed ATNF catalogue and visit data.
+
+    """
     # Trim ra and dec strings to ensure they meet
     # database column length constraints
     df = df.with_columns(
@@ -53,18 +75,23 @@ def main() -> None:
         .map_elements(utils.add_parenthesis, pl.String),
     )
 
-    df = df.with_columns(
+    return df.with_columns(
         # Catalogue columns
         pl.lit("ATNF pulsar catalogue").alias("cat.name"),
         pl.lit(ATNF_BASE_URL).alias("cat.url"),
         pl.lit(1).alias("catalogue_id"),
         # CatalogueVisit columns
-        pl.lit(visited_at).alias("cat_visit.visited_at"),
         pl.lit(1).alias("catalogue_visit_id"),
     )
 
-    # Load catalogue data into the database
-    df = df.to_pandas()
+
+def load(df: pd.DataFrame) -> None:
+    """Load ATNF pulsar catalogue data into the database.
+
+    Args:
+        df (pd.DataFrame): ATNF catalogue and visit data.
+
+    """
     with engine.connect() as conn, conn.begin():
         db = DatabaseLoader(conn=conn)
         for target in targets:
@@ -72,7 +99,3 @@ def main() -> None:
                 df=df,
                 target=target,
             )
-
-
-if __name__ == "__main__":
-    main()
