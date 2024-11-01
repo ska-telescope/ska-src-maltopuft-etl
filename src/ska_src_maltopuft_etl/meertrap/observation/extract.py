@@ -1,7 +1,7 @@
 """Extract single pulse candidate observation data."""
 
 import logging
-from pathlib import Path, PosixPath
+from pathlib import Path
 from typing import Any
 
 import orjson
@@ -14,7 +14,7 @@ from .models import MeertrapRunSummary
 logger = logging.getLogger(__name__)
 
 
-def read_json(filename: PosixPath) -> dict[str, Any]:
+def read_json(filename: Path) -> dict[str, Any]:
     """Serialises a JSON file to a dictionary.
 
     :param filename: The absolute path to the JSON file.
@@ -36,7 +36,7 @@ def read_json(filename: PosixPath) -> dict[str, Any]:
         raise ValueError(msg) from exc
 
 
-def extract_observation(filename: PosixPath) -> dict[str, Any]:
+def extract_observation(filename: Path) -> dict[str, Any]:
     """Extracts data from a MeerTRAP run summary file.
 
     :param filename:  The absolute path to the run summary file.

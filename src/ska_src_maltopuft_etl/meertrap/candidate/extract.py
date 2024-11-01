@@ -1,7 +1,7 @@
 """Extract single pulse candidate data."""
 
 import logging
-from pathlib import Path, PosixPath
+from pathlib import Path
 from typing import Any
 
 from ska_src_maltopuft_etl.core.config import config
@@ -26,7 +26,7 @@ SPCCL_COLUMNS = (
 )
 
 
-def read_csv(filename: PosixPath) -> list[str]:
+def read_csv(filename: Path) -> list[str]:
     """Read lines from a csv file."""
     try:
         with Path.open(filename, encoding="utf-8") as f:
@@ -36,7 +36,7 @@ def read_csv(filename: PosixPath) -> list[str]:
         raise ValueError(msg) from exc
 
 
-def read_spccl(filename: PosixPath) -> dict[str, Any]:
+def read_spccl(filename: Path) -> dict[str, Any]:
     """Extract candidate data from an .spccl (tsv) file."""
     lines = read_csv(filename=filename)
     if len(lines) != 1:
@@ -60,7 +60,7 @@ def read_spccl(filename: PosixPath) -> dict[str, Any]:
     return dict(zip(SPCCL_COLUMNS, values, strict=False))
 
 
-def extract_spccl(filename: PosixPath) -> dict[str, Any]:
+def extract_spccl(filename: Path) -> dict[str, Any]:
     """Extracts candidate data from a MeerTRAP .spccl file.
 
     :param filename:  The absolute path to the spccl file.

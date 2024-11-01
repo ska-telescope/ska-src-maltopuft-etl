@@ -1,7 +1,7 @@
 """Meertrap ETL entrypoint."""
 
 import logging
-from pathlib import Path, PosixPath
+from pathlib import Path
 from typing import Any
 
 import pandas as pd
@@ -9,21 +9,26 @@ import polars as pl
 
 from ska_src_maltopuft_etl.core.config import config
 from ska_src_maltopuft_etl.core.database import engine
+from ska_src_maltopuft_etl.core.exceptions import DuplicateInsertError
 from ska_src_maltopuft_etl.database_loader import DatabaseLoader
 from ska_src_maltopuft_etl.meertrap.candidate.targets import candidate_targets
 from ska_src_maltopuft_etl.meertrap.observation.targets import (
     observation_targets,
 )
+from ska_src_maltopuft_etl.target_handler.target_handler import (
+    TargetDataFrameHandler,
+)
 
 from .candidate.extract import extract_spccl
 from .candidate.transform import transform_spccl
+from .load import bulk_insert_schedule_block, insert_observation_by_row
 from .observation.extract import extract_observation
 from .observation.transform import transform_observation
 
 logger = logging.getLogger(__name__)
 
 
-def parse_candidate_dir(candidate_dir: PosixPath) -> dict[str, Any]:
+def parse_candidate_dir(candidate_dir: Path) -> dict[str, Any]:
     """Parse files in a candidate directory.
 
     :param candidate_dir: The absolute path to the candidate directory to
@@ -49,9 +54,9 @@ def parse_candidate_dir(candidate_dir: PosixPath) -> dict[str, Any]:
 
 
 def extract(
-    root_path: PosixPath = config.get("data_path", ""),
+    root_path: Path = config.get("data_path", ""),
 ) -> pl.DataFrame:
-    """Extract MeerTRAP data.
+    """Extract MeerTRAP data archive from run_summary.json and spccl files.
 
     :param root_path: The absolute path to the candidate data directory.
     """
@@ -64,7 +69,7 @@ def extract(
         if idx % 500 == 0:
             logger.info(f"Parsing candidate #{idx} from {candidate_dir}")
         if idx > 0 and (idx % 1000) == 0:
-            cand_df = cand_df.vstack(pl.DataFrame(rows, orient="row"))
+            cand_df = cand_df.vstack(pl.DataFrame(rows))
             rows = []
         if idx > 0 and (idx % 5000) == 0:
             cand_df = cand_df.rechunk()
@@ -78,7 +83,7 @@ def extract(
 
         rows.append(parse_candidate_dir(candidate_dir=candidate_dir))
 
-    cand_df = cand_df.vstack(pl.DataFrame(rows, orient="row"))
+    cand_df = cand_df.vstack(pl.DataFrame(rows))
     logger.info("Extract routine completed successfully")
     return cand_df
 
@@ -86,11 +91,20 @@ def extract(
 def transform(
     df: pl.DataFrame,
 ) -> tuple[pl.DataFrame, pl.DataFrame]:
-    """Transform MeerTRAP data to MALTOPUFT DB schema."""
+    """Transform MeerTRAP data to MALTOPUFT DB schema.
+
+    Args:
+        df (pl.DataFrame): The raw data.
+
+    Returns:
+        tuple[pl.DataFrame, pl.DataFrame]: The observation and candidate
+        data, respectively.
+
+    """
     obs_pd = transform_observation(df=df)
     obs_df: pl.DataFrame = pl.from_pandas(obs_pd)
 
-    output_path: PosixPath = config.get("output_path", Path())
+    output_path: Path = config.get("output_path", Path())
 
     obs_df_parquet_path = output_path / "obs_df.parquet"
     logger.info(
@@ -117,17 +131,52 @@ def load(
     obs_df: pd.DataFrame,
     cand_df: pd.DataFrame,
 ) -> None:
-    """Load MeerTRAP data into a database."""
-    with engine.connect() as conn, conn.begin():
-        db = DatabaseLoader(conn=conn)
-        for target in observation_targets:
-            obs_df = db.load_target(
-                df=obs_df,
-                target=target,
+    """Load MeerTRAP data into a database.
+
+    Args:
+        obs_df (pd.DataFrame): DataFrame containing observation data.
+        cand_df (pd.DataFrame): DataFrame containing candidate data.
+
+    Raises:
+        RuntimeError: If there is an unrecoverable error while inserting data.
+
+    """
+    try:
+        with engine.connect() as conn, conn.begin():
+            db = DatabaseLoader(conn=conn)
+            bulk_insert_schedule_block(
+                db=db,
+                obs_df=obs_df,
+                cand_df=cand_df,
             )
+    except DuplicateInsertError as exc:
+        logger.warning(
+            "Failed to insert data, falling back to inserting observation "
+            f"rows. {exc}",
+        )
 
-        beam_id_map = db.foreign_keys_map["beam_id"]
-        cand_df["beam_id"] = cand_df["beam_id"].map(beam_id_map)
+        obs_handler = TargetDataFrameHandler(
+            df=obs_df,
+            targets=observation_targets,
+        )
+        cand_handler = TargetDataFrameHandler(
+            df=cand_df,
+            targets=candidate_targets,
+        )
 
-        for target in candidate_targets:
-            cand_df = db.load_target(df=cand_df, target=target)
+        unique_observations = obs_handler.unique_rows(
+            target=observation_targets[3],
+        )
+
+        with engine.connect() as conn:
+            for obs_idx in unique_observations.index:
+                obs_id = unique_observations.loc[obs_idx]["observation_id"]
+
+                with conn.begin():
+                    db = DatabaseLoader(conn=conn)
+                    insert_observation_by_row(
+                        obs_handler,
+                        cand_handler,
+                        obs_id,
+                        db,
+                    )

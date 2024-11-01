@@ -1,15 +1,19 @@
 """Loads transformed data into MALTOPUFTDB."""
 
 import logging
+from collections.abc import Hashable
 from typing import Any
 
 import numpy as np
 import pandas as pd
 import sqlalchemy as sa
+from ska_src_maltopuft_backend.core.database.base import Base
+from ska_src_maltopuft_backend.core.types import ModelT
 
 from ska_src_maltopuft_etl.core.insert import insert_
+from ska_src_maltopuft_etl.core.target import TargetInformation
 
-logging.getLogger(__name__)
+logger = logging.getLogger(__name__)
 
 
 class DatabaseLoader:
@@ -26,51 +30,26 @@ class DatabaseLoader:
     def __init__(self, conn: sa.Connection) -> None:
         """DatabaseLoader initialisation."""
         self.conn = conn
-        self.foreign_keys_map: dict[str, dict[int, int]] = {}
+        self.foreign_keys_map: dict[str, list[tuple[int, int]]] = {}
 
-    def _get_table_attributes(
+    def prepare_data_for_insert(
         self,
         df: pd.DataFrame,
-        table_prefix: str,
-        primary_key: str,
-        foreign_keys: list[str],
+        target: TargetInformation,
     ) -> pd.DataFrame:
-        """Get the target table attributes from the dataframe.
+        """Prepare the subset of data to insert.
 
-        A dataframe column is considered a target table attribute if it meets
-        any of the following criteria:
+        Gets the target table attributes from the dataframe. A dataframe
+        column is considered a target table attribute if it meets any of
+        the following criteria:
 
         1. Columns start with the target table prefix (e.g. `obs`).
         2. The column is the target table primary key.
         3. The column is a target table foreign key.
 
-        Args:
-            df: DataFrame containing the data.
-            table_prefix: Prefix of the target table columns.
-            primary_key: Primary key of the target table.
-            foreign_keys: List of foreign keys of the target table.
-
-        Returns:
-            DataFrame with target table attributes.
-
-        """
-        columns = [
-            col
-            for col in df.columns
-            if col.startswith(table_prefix)
-            or col == primary_key
-            or col in foreign_keys
-        ]
-        table_df = df[columns].drop_duplicates(subset=primary_key)
-        table_df.columns = table_df.columns.str.replace(table_prefix, "")
-        return table_df
-
-    def _prepare_table_for_insert(
-        self,
-        df: pd.DataFrame,
-        target: dict[str, Any],
-    ) -> pd.DataFrame:
-        """Prepare the subset of data to insert.
+        Duplicate rows are dropped and the DataFrame column names are updated
+        to remove the table prefix, such that they match the target table
+        columns. NaN values are replaced with None.
 
         Args:
             df: DataFrame containing the data.
@@ -82,64 +61,27 @@ class DatabaseLoader:
             DataFrame ready for insertion.
 
         """
-        table_prefix = target.get("table_prefix", "")
-        primary_key = target.get("primary_key", "")
-        foreign_keys = target.get("foreign_keys", [])
+        table_prefix = target.table_prefix
+        primary_key = target.primary_key
+        foreign_keys = target.foreign_keys
 
-        return self._get_table_attributes(
-            df=df,
-            table_prefix=table_prefix,
-            primary_key=primary_key,
-            foreign_keys=foreign_keys,
-        )
+        columns = [
+            col
+            for col in df.columns
+            if col.startswith(table_prefix)
+            or col == primary_key
+            or col in foreign_keys
+        ]
+        target_df = df[columns].drop_duplicates(subset=primary_key)
+        target_df.columns = target_df.columns.str.replace(table_prefix, "")
+        return target_df.replace({np.nan: None})
 
-    def _insert_table(
+    def insert_target(
         self,
         df: pd.DataFrame,
-        conn: sa.Connection,
-        target: dict[str, Any],
+        target: TargetInformation,
     ) -> pd.DataFrame:
-        """Insert a subset of pd.DataFrame columns into a database table.
-
-        Args:
-            df: DataFrame containing the data.
-            conn: Database connection.
-            target: Dictionary containing target table details.
-
-        Returns:
-            DataFrame with updated primary keys.
-
-        """
-        table_df = self._prepare_table_for_insert(df=df, target=target)
-
-        try:
-            inserted_ids = insert_(
-                conn=conn,
-                model_class=target["model_class"],
-                data=table_df.to_dict(orient="records"),
-            )
-        except Exception as e:
-            msg = (
-                "Failed to insert data into "
-                f"{target.get('model_class').__table__.name}"
-            )
-            raise RuntimeError(msg) from e
-
-        primary_key = target["primary_key"]
-        self.foreign_keys_map[primary_key] = dict(
-            zip(table_df[primary_key], inserted_ids, strict=False),
-        )
-        df[primary_key] = df[primary_key].map(
-            self.foreign_keys_map[primary_key],
-        )
-        return df
-
-    def load_target(
-        self,
-        df: pd.DataFrame,
-        target: dict[str, Any],
-    ) -> pd.DataFrame:
-        """Load MeerTRAP observation metadata into MALTOPUFT DB.
+        """Insert a subset of DataFrame columns into a target database table.
 
         Args:
             df: DataFrame containing transformed data.
@@ -149,14 +91,132 @@ class DatabaseLoader:
             Updated DataFrame with inserted IDs.
 
         """
-        df = df.replace({np.nan: None})
-        try:
-            df = self._insert_table(
-                df=df,
-                conn=self.conn,
-                target=target,
-            )
-        except Exception as e:
-            msg = "Failed to load observation data"
-            raise RuntimeError(msg) from e
+        target_df = self.prepare_data_for_insert(df=df, target=target)
+
+        inserted_ids = insert_(
+            conn=self.conn,
+            model_class=target.model_class,
+            data=target_df.to_dict(orient="records"),
+        )
+
+        primary_key = target.primary_key
+        self.foreign_keys_map[primary_key] = list(
+            zip(target_df[primary_key], inserted_ids, strict=False),
+        )
+
+        # We need to update all primary_key values simultaneously
+        # so that we don't end up with conflicting values
+        df[primary_key] = df[primary_key].map(
+            {v[0]: v[1] for v in self.foreign_keys_map[primary_key]},
+        )
         return df
+
+    def insert_row(
+        self,
+        target: TargetInformation,
+        data: dict[Hashable, Any],
+        *,
+        transactional: bool,
+    ) -> int:
+        """Insert target row(s) into the database.
+
+        Args:
+            target (dict[str, Any]): _description_
+            data (dict[str, Any]): _description_
+            transactional (bool): Perform the insert in a nested
+            transaction.
+
+        Returns:
+            list[int]: The inserted IDs.
+
+        """
+        if not transactional:
+            return insert_(
+                conn=self.conn,
+                model_class=target.model_class,
+                data=[data],
+            )[0]
+
+        with self.conn.begin_nested():
+            return self.insert_row(
+                target=target,
+                data=data,
+                transactional=False,
+            )
+
+    def update_foreign_keys_map(
+        self,
+        key_name: str,
+        initial_value: int,
+        update_value: int,
+    ) -> None:
+        """Update a key dict in the foreign keys map.
+
+        Args:
+            key_name (str): The key map to update.
+            initial_value (int): The initial value.
+            update_value (int): The updated value.
+
+        """
+        if self.foreign_keys_map.get(key_name) is None:
+            self.foreign_keys_map[key_name] = []
+
+        initial_value = int(initial_value)
+        update_value = int(update_value)
+
+        self.foreign_keys_map[key_name].append((initial_value, update_value))
+        logger.info(f"Updated foreign key map to: {self.foreign_keys_map}")
+
+    def get_by(
+        self,
+        model_class: type[Base],
+        attributes: dict[Any, Any],
+    ) -> sa.Row[ModelT] | None:
+        """Fetch a row with given attributes from a table.
+
+        Args:
+            model_class (dict[str, Any]): The SQLAlchemy model class for the
+            target table.
+            attributes (dict[str, Any]): The attributes to filter by.
+
+        Returns:
+            sa.Row[ModelT] | None: The fetched row or None if row not found.
+
+        """
+        logger.debug(
+            f"Fetching row from table {model_class.__table__.name} "
+            f"with attributes {attributes}",
+        )
+        stmt = sa.select(model_class)
+        for k, v in attributes.items():
+            stmt = stmt.where(getattr(model_class, k) == v)
+
+        logger.debug(stmt)
+        res = self.conn.execute(stmt).fetchone()
+        if res is None:
+            logger.info("Row does not exist in table")
+            return res
+
+        logger.info(
+            f"Fetched {model_class.__table__.name} row with id {res.id}",
+        )
+        logger.debug(f"Fetched {model_class.__table__.name}: {res}")
+        return res
+
+    def count(self, target: TargetInformation) -> int:
+        """Count the number of rows in a table.
+
+        Args:
+            target (dict[str, Any]): The table information.
+
+        Returns:
+            int: The number of rows in the table.
+
+        """
+        count_query = sa.select(
+            sa.func.count(),  # pylint: disable = not-callable
+        ).select_from(target.model_class)
+
+        logger.debug(count_query)
+        count = self.conn.execute(count_query).scalar()
+        return count or 0
