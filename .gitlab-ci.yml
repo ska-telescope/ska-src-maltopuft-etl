@@ -49,7 +49,6 @@ include:
 python-lint:
   before_script:
     - !reference [.setup, before_script]
-    - poetry self update $CI_POETRY_VERSION
     - poetry config virtualenvs.in-project true
     - poetry config virtualenvs.create $POETRY_CONFIG_VIRTUALENVS_CREATE
     - time poetry install --with dev --no-root
@@ -57,7 +56,6 @@ python-lint:
 python-test:
   before_script:
     - !reference [.setup, before_script]
-    - poetry self update $CI_POETRY_VERSION
     - poetry config virtualenvs.in-project true
     - poetry config virtualenvs.create $POETRY_CONFIG_VIRTUALENVS_CREATE
     - time poetry install --with dev --no-root

@@ -68,6 +68,14 @@ def transform_candidate(
     )
 
     cand_df = cand_df.with_columns(
+        pl.col("mjd")
+        .map_elements(mjd_2_datetime, pl.Datetime)
+        .dt.replace_time_zone("UTC")
+        .alias("cand.observed_at"),
+    ).drop("mjd")
+    logger.info(f"cols are {cand_df.columns}")
+
+    cand_df = cand_df.with_columns(
         pl.col("cand.ra").map_elements(utils.format_ra_hms, pl.String),
     )
     cand_df = cand_df.with_columns(
@@ -97,17 +105,9 @@ def transform_sp_candidate(candidate_df: pl.DataFrame) -> pl.DataFrame:
         pl.DataFrame: Unique SPCandidate model data.
 
     """
-    sp_df = candidate_df.with_columns(
-        pl.col("mjd")
-        .map_elements(mjd_2_datetime, pl.Datetime)
-        .dt.replace_time_zone("UTC")
-        .alias("observed_at"),
-    ).drop("mjd")
-
-    sp_df = sp_df.with_row_index(name="sp_candidate_id", offset=1)
+    sp_df = candidate_df.with_row_index(name="sp_candidate_id", offset=1)
     return sp_df.rename(
         {
-            "observed_at": "sp_cand.observed_at",
             "plot_file": "sp_cand.plot_path",
         },
     )
