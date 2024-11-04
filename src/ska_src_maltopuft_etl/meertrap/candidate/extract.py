@@ -4,8 +4,6 @@ import logging
 from pathlib import Path
 from typing import Any
 
-from ska_src_maltopuft_etl.core.config import config
-
 from .models import MeertrapSpccl
 
 logger = logging.getLogger(__name__)
@@ -49,11 +47,10 @@ def read_spccl(filename: Path) -> dict[str, Any]:
     # Get list of each comma separated value (dropping index at element 0)
     split_line = line.split(",")[1:]
 
-    # Add full file path information to plot and filterbank
-    rel_filename = filename.relative_to(config.get("data_path", ""))
-    candidate = Path(rel_filename.parts[0])
+    # Create file path with candidate dir + filename for plot and filterbank
+    candidate = filename.parent.parts[-1]
     values = [
-        (str(candidate / val) if ".jpg" in val or ".fil" in val else val)
+        (f"{candidate}/{val}" if ".jpg" in val or ".fil" in val else val)
         for val in split_line
     ]
 
@@ -65,11 +62,10 @@ def extract_spccl(filename: Path) -> dict[str, Any]:
 
     :param filename:  The absolute path to the spccl file.
     """
-    rel_filename = filename.relative_to(config.get("data_path", ""))
-    candidate = rel_filename.parts[0]
+    candidate = filename.parent.parts[-1]
     data = MeertrapSpccl(
-        **read_spccl(filename),
+        **read_spccl(filename=filename),
         candidate=candidate,
-        filename=str(rel_filename),
+        filename=f"{candidate}/{filename.stem}",
     )
     return data.model_dump()

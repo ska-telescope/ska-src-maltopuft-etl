@@ -5,8 +5,8 @@ from pathlib import Path
 from typing import Any
 
 import orjson
+from orjson import JSONDecodeError
 
-from ska_src_maltopuft_etl.core.config import config
 from ska_src_maltopuft_etl.core.flatten import flatten
 
 from .models import MeertrapRunSummary
@@ -31,9 +31,12 @@ def read_json(filename: Path) -> dict[str, Any]:
             return orjson.loads(  # pylint: disable=maybe-no-member
                 f.read(),
             )
-    except FileNotFoundError as exc:
-        msg = f"File {filename} not found."
-        raise ValueError(msg) from exc
+    except FileNotFoundError:
+        logger.exception(f"File {filename} not found.")
+        raise
+    except JSONDecodeError:
+        logger.exception(f"Error decoding JSON file {filename}")
+        raise
 
 
 def extract_observation(filename: Path) -> dict[str, Any]:
@@ -41,11 +44,9 @@ def extract_observation(filename: Path) -> dict[str, Any]:
 
     :param filename:  The absolute path to the run summary file.
     """
-    rel_filename = filename.relative_to(config.get("data_path", ""))
-    candidate = rel_filename.parts[0]
     data = MeertrapRunSummary(
         **read_json(filename),
-        candidate=candidate,
-        filename=str(rel_filename),
+        candidate=filename.parent.parts[-1],
+        filename=filename.stem,
     )
     return flatten(data.model_dump())

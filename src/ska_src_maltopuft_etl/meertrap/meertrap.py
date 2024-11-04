@@ -76,8 +76,7 @@ def extract(
 
         if not candidate_dir.is_dir():
             logger.warning(
-                f"Unexpected file {candidate_dir} found in "
-                f"{config.get('data_path')}",
+                f"Unexpected file {candidate_dir} found in {root_path}",
             )
             continue
 
