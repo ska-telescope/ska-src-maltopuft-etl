@@ -1,17 +1,22 @@
 .. ska-src-maltopuft-etl documentation master file.
 
-.. HOME SECTION ==================================================
-.. Hidden toctree to manage the sidebar navigation.
+.. toctree::
+  :maxdepth: 2
+  :caption: Contents:
+
+MALTOPUFT ETL documentation
+===========================
+
+.. README ========================================================
+..
 
 .. toctree::
   :maxdepth: 2
-  :caption: ska-src-maltopuft-etl
-  :hidden:
+  :caption: Readme
 
-  README.md
-  CHANGELOG.md
+  README
 
-.. Developer documentation =======================================
+.. Project documentation =========================================
 ..
 
 .. toctree::
@@ -32,3 +37,13 @@
   :hidden:
 
   autoapi/index.rst
+
+.. Changelog ======================================================
+..
+
+.. toctree::
+  :maxdepth: 2
+  :caption: Changelog
+  :hidden:
+
+  CHANGELOG
