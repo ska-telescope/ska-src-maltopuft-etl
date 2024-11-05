@@ -21,7 +21,7 @@ priority = "supplemental"
 
 
 [tool.poetry.dependencies]
-python = ">=3.10,<4.0.0"
+python = ">=3.10,<3.13"
 ska-ser-logging = "^0.4.3"
 orjson = "^3.10.6"
 pydantic = "^2.8.2"
@@ -33,6 +33,7 @@ astropy = "^6.1.2"
 sqlalchemy = "^2.0.31"
 psrqpy = "^1.2.10"
 ska-src-maltopuft-backend = {git = "https://gitlab.com/ska-telescope/src/ska-src-maltopuft-backend.git"}
+dagster = "^1.8.8"
 
 
 [tool.poetry.group.dev.dependencies]
@@ -49,6 +50,7 @@ ruff = "^0.5.3"
 pytest-bdd = "^7.2.0"
 types-pyyaml = "^6.0.12.20240311"
 pandas-stubs = "^2.2.2.240603"
+dagster-webserver = "^1.8.8"
 
 
 [tool.poetry.group.docs]
@@ -155,6 +157,11 @@ module = [
     "ska_src_maltopuft_backend.*",
 ]
 ignore_missing_imports = true
+
+
+[tool.dagster]
+module_name = "src.ska_src_maltopuft_etl.dagster.definitions"
+code_location_name = "src.ska_src_maltopuft_etl.dagster"
 
 
 [build-system]

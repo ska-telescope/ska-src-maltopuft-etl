@@ -264,7 +264,7 @@ class ScheduleBlockData(BaseModel):
         instantiated.
         """
         if not isinstance(value, str):
-            return {}
+            return []
         return json.loads(value)
 
     @field_validator("actual_start_time", mode="before")
