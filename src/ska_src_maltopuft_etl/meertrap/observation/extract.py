@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import Any
 
 import orjson
-from orjson import JSONDecodeError
+from orjson import JSONDecodeError  # pylint: disable=no-name-in-module
 
 from ska_src_maltopuft_etl.core.flatten import flatten
 

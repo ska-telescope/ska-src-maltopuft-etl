@@ -28,10 +28,10 @@ def delete_empty_cand_dirs(source: str) -> None:
     """Deletes all sub-directories that contain an empty file from the input
     directory.
     """
-    source_ = Path(source)
-    for src in source_.iterdir():
+    for src in Path(source).iterdir():
         delete_dir_if_any_file_empty(dir_=src)
 
 
 if __name__ == "__main__":
+    # pylint: disable=no-value-for-parameter
     delete_empty_cand_dirs()
