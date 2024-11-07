@@ -50,10 +50,10 @@ class TargetDataFrameHandler:
         )
         logger.info(
             f"Found {len(unique_rows)} unique rows for "
-            f"{target.table_name} table",
+            f"{target.table_name()} table",
         )
         logger.debug(
-            f"Unique {target.table_name} "
+            f"Unique {target.table_name()} "
             f"rows are {unique_rows.to_dict(orient='records')}",
         )
         return unique_rows

@@ -7,6 +7,7 @@ import polars as pl
 from astropy.time import Time
 
 from ska_src_maltopuft_etl import utils
+from ska_src_maltopuft_etl.core.exceptions import UnexpectedShapeError
 
 logger = logging.getLogger(__name__)
 
@@ -75,15 +76,28 @@ def transform_candidate(
 
     """
     logger.info("Joining beam and candidate data")
+
+    n_cand = df.select("candidate").n_unique()
     cand_df = (
         df.lazy()
-        .join(obs_df.lazy(), on=["candidate"], how="inner", coalesce=True)
+        .join(obs_df.lazy(), on=["candidate"], how="inner", coalesce=False)
         .unique(subset=["candidate", "beam", "beam.number"])
         .filter(pl.col("beam") == pl.col("beam.number"))
     ).collect(streaming=True)
-    logger.info("Successfully joined beam and candidate data")
 
-    logger.info("Started transforming candidate data")
+    if len(cand_df) != n_cand:
+        msg = (
+            "Unexpected number of candidates after join. Expected "
+            f"{n_cand}, got {len(cand_df)}"
+        )
+        raise UnexpectedShapeError(msg)
+
+    logger.info(
+        "Successfully joined beam and candidate data for "
+        f"{n_cand} candidates",
+    )
+    logger.info("Transforming candidate data")
+
     cand_df = cand_df.rename(
         {
             "dm": "cand.dm",

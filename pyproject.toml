@@ -53,6 +53,12 @@ pandas-stubs = "^2.2.2.240603"
 dagster-webserver = "^1.8.8"
 
 
+[tool.poetry.group.cli]
+optional = true
+[tool.poetry.group.cli.dependencies]
+click = "^8.1.7"
+
+
 [tool.poetry.group.docs]
 optional = true
 [tool.poetry.group.docs.dependencies]
@@ -155,6 +161,7 @@ module = [
     "psrqpy",
     "ska_ser_logging",
     "ska_src_maltopuft_backend.*",
+    "tqdm",
 ]
 ignore_missing_imports = true
 
