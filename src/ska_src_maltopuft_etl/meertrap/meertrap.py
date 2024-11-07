@@ -65,7 +65,19 @@ def extract(
     cand_df = pl.DataFrame()
     rows: list[dict[str, Any]] = []
 
+    if len(list(root_path.glob("*"))) == 0:
+        logger.warning(
+            "No candidate data found in the specified directory, skipping.",
+        )
+        return cand_df
+
     for idx, candidate_dir in enumerate(root_path.iterdir()):
+        if not candidate_dir.is_dir():
+            logger.warning(
+                f"Unexpected file {candidate_dir} found in {root_path}",
+            )
+            continue
+
         if idx % 500 == 0:
             logger.info(f"Parsing candidate #{idx} from {candidate_dir}")
         if idx > 0 and (idx % 1000) == 0:
@@ -98,12 +110,6 @@ def extract(
         if idx > 0 and (idx % 5000) == 0:
             cand_df = cand_df.rechunk()
 
-        if not candidate_dir.is_dir():
-            logger.warning(
-                f"Unexpected file {candidate_dir} found in {root_path}",
-            )
-            continue
-
         rows.append(parse_candidate_dir(candidate_dir=candidate_dir))
 
     cand_df = cand_df.vstack(pl.DataFrame(rows))
@@ -113,23 +119,31 @@ def extract(
 
 def transform(
     df: pl.DataFrame,
+    output_path: Path = config.get("output_path", Path()),
+    partition_key: str = "",
 ) -> tuple[pl.DataFrame, pl.DataFrame]:
     """Transform MeerTRAP data to MALTOPUFT DB schema.
 
     Args:
         df (pl.DataFrame): The raw data.
+        output_path (Path, optional): The path to write the transformed data
+        to.
+        partition_key (str, optional): The partition key for the data to
+        include in the output filename.
 
     Returns:
         tuple[pl.DataFrame, pl.DataFrame]: The observation and candidate
         data, respectively.
 
     """
+    if len(df) == 0:
+        return pl.DataFrame(), pl.DataFrame()
+
     obs_pd = transform_observation(df=df)
     obs_df: pl.DataFrame = pl.from_pandas(obs_pd)
 
-    output_path: Path = config.get("output_path", Path())
-
-    obs_df_parquet_path = output_path / "obs_df.parquet"
+    partition_key += "_"
+    obs_df_parquet_path = output_path / f"{partition_key}obs_df.parquet"
     logger.info(
         f"Writing transformed observation data to {obs_df_parquet_path}",
     )
@@ -140,7 +154,7 @@ def transform(
     )
 
     cand_df = transform_spccl(df=df, obs_df=obs_df)
-    cand_df_parquet_path = output_path / "cand_df.parquet"
+    cand_df_parquet_path = output_path / f"{partition_key}cand_df.parquet"
     logger.info(f"Writing transformed cand data to {cand_df_parquet_path}")
     cand_df.write_parquet(cand_df_parquet_path)
     logger.info(
@@ -164,6 +178,9 @@ def load(
         RuntimeError: If there is an unrecoverable error while inserting data.
 
     """
+    if len(obs_df) == 0 or len(cand_df) == 0:
+        return
+
     try:
         with engine.connect() as conn, conn.begin():
             db = DatabaseLoader(conn=conn)

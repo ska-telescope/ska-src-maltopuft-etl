@@ -54,10 +54,7 @@ def build_target_name(source: Path, target: Path) -> Path:
         raise ValueError(msg)
 
     return (  # pylint: disable=no-member
-        target
-        / sb.actual_start_time.strftime("%Y-%m-%d")
-        / str(sb.id)
-        / candidate
+        target / sb.actual_start_time.strftime("%Y-%m-%d") / candidate
     )
 
 
