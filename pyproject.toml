@@ -25,7 +25,6 @@ python = ">=3.10,<3.13"
 ska-ser-logging = "^0.4.3"
 orjson = "^3.10.6"
 pydantic = "^2.8.2"
-polars = "^1.2.1"
 pyaml = "^24.7.0"
 pandas = "^2.2.2"
 pyarrow = "^17.0.0"
@@ -34,6 +33,7 @@ sqlalchemy = "^2.0.31"
 psrqpy = "^1.2.10"
 ska-src-maltopuft-backend = {git = "https://gitlab.com/ska-telescope/src/ska-src-maltopuft-backend.git"}
 dagster = "^1.8.8"
+polars = "^1.14.0"
 
 
 [tool.poetry.group.dev.dependencies]

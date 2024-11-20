@@ -69,7 +69,31 @@ def extract(
         if idx % 500 == 0:
             logger.info(f"Parsing candidate #{idx} from {candidate_dir}")
         if idx > 0 and (idx % 1000) == 0:
-            cand_df = cand_df.vstack(pl.DataFrame(rows))
+            try:
+                cand_df = cand_df.vstack(pl.DataFrame(rows))
+            except (
+                pl.exceptions.SchemaError,
+                pl.exceptions.ComputeError,
+            ) as exc:
+                # If cand_df.utc_stop or rows.utc_stop contains only nulls
+                # and the other contains a legitimate datetime value, then
+                # df.concat() and df.vstack() raises an exception, most
+                # likely due to https://github.com/pola-rs/polars/issues/14730
+                # To work around this, we set all utc_stop values to null which
+                # is horrible but fine for now because we can cope with null
+                # utc_stop values in the transformation step. This should
+                # absolutely be removed when #14730 is fixed.
+                msg = (
+                    "Error concatenating dataframes, setting all utc_stop to "
+                    f"null: {exc}"
+                )
+                logger.warning(msg)
+
+                for row_idx, _ in enumerate(rows):
+                    rows[row_idx]["utc_stop"] = None
+
+                tmp_df = pl.DataFrame(rows)
+                cand_df = cand_df.vstack(tmp_df)
             rows = []
         if idx > 0 and (idx % 5000) == 0:
             cand_df = cand_df.rechunk()
