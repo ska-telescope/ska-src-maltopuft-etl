@@ -61,13 +61,13 @@ def build_target_name(source: Path, target: Path) -> Path:
     )
 
 
-def symlink_dir_files_to_target(source: Path, target: Path) -> None:
-    """Create symbolic links to all files in the source directory in the
+def hardlink_dir_files_to_target(source: Path, target: Path) -> None:
+    """Create hard links to all files in the source directory in the
     target directory.
 
     Args:
-        source (Path): The source directory to symlink files from.
-        target (Path): The target directory to symlink files to.
+        source (Path): The source directory to hard link files from.
+        target (Path): The target directory to hard link files to.
 
     """
     for file in source.iterdir():
@@ -76,9 +76,9 @@ def symlink_dir_files_to_target(source: Path, target: Path) -> None:
             if target_file.exists():
                 target_file.unlink()  # Remove existing file or symlink
             logger.debug(
-                f"Creating symbolic link from {file} to {target_file}",
+                f"Creating hard link from {file} to {target_file}",
             )
-            target_file.symlink_to(file)
+            target_file.hardlink_to(file)
 
 
 def process_candidate_directory(source: Path, target: Path) -> None:
@@ -92,7 +92,7 @@ def process_candidate_directory(source: Path, target: Path) -> None:
     """
     target_ = build_target_name(source=source, target=target)
     target_.mkdir(parents=True, exist_ok=True)
-    symlink_dir_files_to_target(source=source, target=target_)
+    hardlink_dir_files_to_target(source=source, target=target_)
 
 
 @click.command()
