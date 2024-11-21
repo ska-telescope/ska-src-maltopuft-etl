@@ -107,15 +107,16 @@ def transform_candidate(
         },
     )
 
-    cand_df = cand_df.with_columns(
-        pl.col("mjd")
-        .map_elements(mjd_2_datetime, pl.Datetime)
-        .dt.replace_time_zone("UTC")
-        .alias("cand.observed_at"),
-    ).drop("mjd")
-
     cand_df = (
-        cand_df.with_columns(
+        cand_df.with_row_index(name="candidate_id", offset=1)
+        .with_columns(
+            pl.col("mjd")
+            .map_elements(mjd_2_datetime, pl.Datetime)
+            .dt.replace_time_zone("UTC")
+            .alias("cand.observed_at"),
+        )
+        .drop("mjd")
+        .with_columns(
             [
                 pl.struct(["cand.ra", "cand.dec"])
                 .map_elements(
@@ -140,16 +141,11 @@ def transform_candidate(
             ],
         )
         .drop("ra_dec_degrees")
-    )
-
-    # Add cand.pos=(ra,dec) for querying with pgSphere
-    cand_df = cand_df.with_columns(
+    ).with_columns(
         pl.concat_str(["cand.ra", "cand.dec"], separator=",")
         .alias("cand.pos")
         .map_elements(utils.add_parenthesis, pl.String),
     )
-
-    cand_df = cand_df.with_row_index(name="candidate_id", offset=1)
 
     logger.info("Successfully transformed candidate data.")
     return cand_df

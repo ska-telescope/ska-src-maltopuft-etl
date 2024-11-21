@@ -5,7 +5,7 @@ metadata and Candidate data into MALTOPUFTDB target tables.
 import logging
 from typing import Any
 
-import pandas as pd
+import polars as pl
 
 from ska_src_maltopuft_etl.core.target import TargetInformation
 
@@ -17,18 +17,21 @@ class TargetDataFrameHandler:
 
     def __init__(  # noqa: D107, ANN204
         self,
-        df: pd.DataFrame,
+        df: pl.DataFrame,
         targets: list[TargetInformation],
         parent=None,  # noqa: ANN001, "TargetDataFrameHandler" | None
     ):
-        self.df = df.copy()
+        self.df = df.clone()
         self.targets = targets
         self.parent = parent
+
+        if parent is None:
+            self.df = self.df.with_row_index()
 
     def unique_rows(
         self,
         target: TargetInformation,
-    ) -> pd.DataFrame:
+    ) -> pl.DataFrame:
         """Return the unique rows for a target table.
 
         Args:
@@ -45,7 +48,7 @@ class TargetDataFrameHandler:
         logger.debug(
             f"Getting unique rows by distinct {target.primary_key} values",
         )
-        unique_rows = self.df.drop_duplicates(
+        unique_rows = self.df.unique(
             subset=[target.primary_key],
         )
         logger.info(
@@ -54,14 +57,14 @@ class TargetDataFrameHandler:
         )
         logger.debug(
             f"Unique {target.table_name()} "
-            f"rows are {unique_rows.to_dict(orient='records')}",
+            f"rows are {unique_rows.to_dicts()}",
         )
         return unique_rows
 
     def primary_keys(
         self,
         target: TargetInformation,
-        row: pd.DataFrame | None = None,
+        row: pl.DataFrame | None = None,
     ) -> list[int]:
         """Get the primary key of a row in a DataFrame.
 
@@ -78,7 +81,7 @@ class TargetDataFrameHandler:
         if row is not None:
             primary_keys = row[target.primary_key].to_list()
         else:
-            primary_keys = self.df[target.primary_key].unique().tolist()
+            primary_keys = self.df[target.primary_key].unique().to_list()
 
         logger.debug(
             f"Dataframe primary keys {target.primary_key}={primary_keys}",
@@ -90,7 +93,7 @@ class TargetDataFrameHandler:
         col: str,
         initial_value: int,
         update_value: int,
-    ) -> pd.DataFrame:
+    ) -> pl.DataFrame:
         """Update DataFrame column values.
 
         Updates all cells in the Pandas DataFrame where the column value is
@@ -108,27 +111,41 @@ class TargetDataFrameHandler:
             pd.DataFrame: The DataFrame with updated primary keys.
 
         """
+        if initial_value == update_value:
+            return self.df
+
         logger.debug(
             f"Updating dataframe {col}={initial_value} to {update_value}",
         )
-        self.df.loc[self.df[col] == initial_value, [col]] = update_value
+        self.df = self.df.with_columns(
+            [
+                pl.when(pl.col(col) == initial_value)
+                .then(update_value)
+                .otherwise(pl.col(col))
+                .alias(col),
+            ],
+        )
         logger.debug(
             "Successfully updated dataframe "
             f"{col}={initial_value} to {update_value}",
         )
 
-        if self.parent is not None:
+        if self.parent is not None and isinstance(
+            self.parent,
+            TargetDataFrameHandler,
+        ):
             self.parent.update_df_value(
                 col=col,
                 initial_value=initial_value,
                 update_value=update_value,
             )
+
         return self.df
 
     def get_sub_handler(
         self,
         column: str,
-        values: pd.Series | list[Any],
+        values: pl.Series | list[Any],
     ) -> "TargetDataFrameHandler":
         """Filter the TargetDataFrameHandler rows by the given column values
         and return a sub TargetDataFrameHandler instance initialised with
@@ -142,9 +159,8 @@ class TargetDataFrameHandler:
             TargetDataFrameHandler: A new TargetDataFrameHandler instance.
 
         """
-        _subdf = self.df[self.df[column].isin(values)].copy()
         return TargetDataFrameHandler(
-            df=_subdf,
+            df=self.df.filter(pl.col(column).is_in(values)),
             targets=self.targets,
             parent=self,
         )

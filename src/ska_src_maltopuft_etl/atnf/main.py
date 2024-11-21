@@ -7,7 +7,7 @@ def main() -> None:
     """ETL routine for ATNF pulsar catalogue to MALTOPUFT DB."""
     atnf_df = extract()
     atnf_df = transform(df=atnf_df)
-    load(df=atnf_df.to_pandas())
+    load(df=atnf_df)
 
 
 if __name__ == "__main__":

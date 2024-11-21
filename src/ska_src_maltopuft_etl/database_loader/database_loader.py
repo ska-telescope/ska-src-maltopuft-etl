@@ -4,8 +4,7 @@ import logging
 from collections.abc import Hashable
 from typing import Any
 
-import numpy as np
-import pandas as pd
+import polars as pl
 import sqlalchemy as sa
 from ska_src_maltopuft_backend.core.database.base import Base
 from ska_src_maltopuft_backend.core.types import ModelT
@@ -34,9 +33,9 @@ class DatabaseLoader:
 
     def prepare_data_for_insert(
         self,
-        df: pd.DataFrame,
+        df: pl.DataFrame,
         target: TargetInformation,
-    ) -> pd.DataFrame:
+    ) -> pl.DataFrame:
         """Prepare the subset of data to insert.
 
         Gets the target table attributes from the dataframe. A dataframe
@@ -72,15 +71,17 @@ class DatabaseLoader:
             or col == primary_key
             or col in foreign_keys
         ]
-        target_df = df[columns].drop_duplicates(subset=primary_key)
-        target_df.columns = target_df.columns.str.replace(table_prefix, "")
-        return target_df.replace({np.nan: None})
+        return (
+            df.select(columns)
+            .unique(primary_key)
+            .rename({col: col.replace(table_prefix, "") for col in columns})
+        )
 
     def insert_target(
         self,
-        df: pd.DataFrame,
+        df: pl.DataFrame,
         target: TargetInformation,
-    ) -> pd.DataFrame:
+    ) -> pl.DataFrame:
         """Insert a subset of DataFrame columns into a target database table.
 
         Args:
@@ -91,25 +92,38 @@ class DatabaseLoader:
             Updated DataFrame with inserted IDs.
 
         """
+        logger.debug(
+            f"Loading data into {target.model_class.__table__.name}",
+        )
         target_df = self.prepare_data_for_insert(df=df, target=target)
 
         inserted_ids = insert_(
             conn=self.conn,
             model_class=target.model_class,
-            data=target_df.to_dict(orient="records"),
+            data=target_df.to_dicts(),
         )
 
         primary_key = target.primary_key
         self.foreign_keys_map[primary_key] = list(
-            zip(target_df[primary_key], inserted_ids, strict=False),
+            zip(
+                target_df[primary_key],
+                inserted_ids,
+                strict=False,
+            ),
         )
 
         # We need to update all primary_key values simultaneously
         # so that we don't end up with conflicting values
-        df[primary_key] = df[primary_key].map(
-            {v[0]: v[1] for v in self.foreign_keys_map[primary_key]},
+        fk_mapping_dict = {
+            v[0]: v[1] for v in self.foreign_keys_map[primary_key]
+        }
+        return df.with_columns(
+            [
+                pl.col(primary_key)
+                .map_elements(lambda x: fk_mapping_dict.get(x, x))
+                .alias(primary_key),
+            ],
         )
-        return df
 
     def insert_row(
         self,
@@ -158,11 +172,14 @@ class DatabaseLoader:
             update_value (int): The updated value.
 
         """
-        if self.foreign_keys_map.get(key_name) is None:
-            self.foreign_keys_map[key_name] = []
-
         initial_value = int(initial_value)
         update_value = int(update_value)
+
+        if initial_value == update_value:
+            return
+
+        if self.foreign_keys_map.get(key_name) is None:
+            self.foreign_keys_map[key_name] = []
 
         self.foreign_keys_map[key_name].append((initial_value, update_value))
         logger.debug(f"Updated foreign key map to: {self.foreign_keys_map}")

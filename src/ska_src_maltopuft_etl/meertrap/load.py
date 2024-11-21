@@ -2,7 +2,7 @@
 
 import logging
 
-import pandas as pd
+import polars as pl
 from ska_src_maltopuft_backend.observation.models import Observation
 
 from ska_src_maltopuft_etl.core.exceptions import (
@@ -24,8 +24,8 @@ logger = logging.getLogger(__name__)
 
 def bulk_insert_schedule_block(
     db: DatabaseLoader,
-    obs_df: pd.DataFrame,
-    cand_df: pd.DataFrame,
+    obs_df: pl.DataFrame,
+    cand_df: pl.DataFrame,
 ) -> None:
     """The base load function for inserting data into the database.
 
@@ -41,25 +41,25 @@ def bulk_insert_schedule_block(
     logger.info("Attempting to bulk insert data")
     logger.info("Staging observation data")
 
-    df = obs_df
     for target in observation_targets:
-        logger.debug(
-            f"Loading data into {target.model_class.__table__.name}",
-        )
-        df = db.insert_target(
-            df=df,
-            target=target,
-        )
+        obs_df = db.insert_target(df=obs_df, target=target)
+
     logger.info("Observation data staged successfully")
 
-    cand_df["beam_id"] = cand_df["beam_id"].map(
-        {v[0]: v[1] for v in db.foreign_keys_map["beam_id"]},
+    beam_id_map = {v[0]: v[1] for v in db.foreign_keys_map["beam_id"]}
+    cand_df = cand_df.with_columns(
+        [
+            pl.col("beam_id")
+            .map_elements(lambda x: beam_id_map.get(x, x))
+            .alias("beam_id"),
+        ],
     )
 
     logger.info("Staging candidate data")
-    df = cand_df
+
     for target in candidate_targets:
-        df = db.insert_target(df=df, target=target)
+        cand_df = db.insert_target(df=cand_df, target=target)
+
     logger.info("Candidate data staged successfully")
     logger.info("Successfully bulk inserted data")
 
@@ -97,13 +97,14 @@ def insert_observation_by_row(
             db=db,
         )
 
-    # Update the beam_id in the candidate DataFrame to the DB primary keys
-    for initial, updated in db.foreign_keys_map["beam_id"]:
-        sub_cand_handler.update_df_value(
-            col="beam_id",
-            initial_value=initial,
-            update_value=updated,
-        )
+    if db.foreign_keys_map.get("beam_id") is not None:
+        # Update the beam_id in the candidate DataFrame to the DB primary keys
+        for initial, updated in db.foreign_keys_map["beam_id"]:
+            sub_cand_handler.update_df_value(
+                col="beam_id",
+                initial_value=initial,
+                update_value=updated,
+            )
 
     for target in candidate_targets:
         handler_insert_target(
@@ -111,6 +112,9 @@ def insert_observation_by_row(
             target=target,
             db=db,
         )
+
+    del sub_obs_handler
+    del sub_cand_handler
 
 
 def handler_insert_target(
@@ -124,7 +128,6 @@ def handler_insert_target(
     the TargetDataFrameHandlers are updated with the fethed primary key.
 
     Args:
-        parent_handler (TargetDataFrameHandler): _description_
         handler (TargetDataFrameHandler): _description_
         target (dict[str, Any]): Insertion target table details.
         db (DatabaseLoader): A DatabaseLoader instance.
@@ -141,20 +144,18 @@ def handler_insert_target(
         target=target,
     )
 
-    for df_idx in unique_rows.index:
-        row = handler.df.loc[df_idx]
+    for df_idx in unique_rows["index"]:
+        row = handler.df.filter(pl.col("index") == df_idx)
         row = db.prepare_data_for_insert(
-            df=row.to_frame().T,
+            df=row,
             target=target,
         )
-        attrs = row.drop(
-            columns=[primary_key_name],
-        )
+        attrs = row.drop(primary_key_name)
 
         try:
             db_id = db.insert_row(
                 target=target,
-                data=attrs.to_dict(orient="records")[0],
+                data=attrs.to_dicts()[0],
                 transactional=True,
             )
         except (DuplicateInsertError, ForeignKeyError) as exc:
@@ -168,21 +169,18 @@ def handler_insert_target(
             # duplicate observations so it is dropped from the attributes
             # used to fetch duplicate rows.
             if target.model_class == Observation:
-                attrs = attrs.drop(
-                    columns=["t_max"],
-                )
+                attrs = attrs.drop("t_max")
 
             db_row = db.get_by(
                 model_class=target.model_class,
-                attributes=attrs.to_dict(orient="records")[0],
+                attributes=attrs.to_dicts()[0],
             )
 
             if db_row is None:
                 msg = (
-                    "Can't find a duplicated record with "
-                    f"attributes {attrs.to_dict(orient='records')}. "
-                    "This is a bug in the load method. Exiting without "
-                    "commiting records."
+                    "Can't find a duplicated record with attributes "
+                    f"{attrs.to_dicts()[0]}. This is a bug in the load "
+                    "method. Exiting without commiting records."
                 )
                 raise RuntimeError(msg) from exc
 

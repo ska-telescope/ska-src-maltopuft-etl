@@ -16,13 +16,6 @@ from ska_src_maltopuft_etl.database_loader import DatabaseLoader
 logger = logging.getLogger(__name__)
 
 
-def trim_ra_dec_str(coord: str, length: int = 11) -> str:
-    """Trims a string to the specified length."""
-    if len(coord) > length:
-        return coord[:length]
-    return coord
-
-
 def extract() -> pl.DataFrame:
     """Extract ATNF pulsar catalogue data.
 
@@ -54,21 +47,7 @@ def transform(df: pl.DataFrame) -> pl.DataFrame:
         pl.DataFrame: Transformed ATNF catalogue and visit data.
 
     """
-    # Trim ra and dec strings to ensure they meet
-    # database column length constraints
-    df = df.with_columns(
-        pl.col("known_ps.ra").map_elements(trim_ra_dec_str, pl.String),
-        pl.col("known_ps.dec").map_elements(trim_ra_dec_str, pl.String),
-    )
-    df = df.with_columns(
-        pl.col("known_ps.ra").map_elements(utils.format_ra_hms, pl.String),
-        pl.col("known_ps.dec").map_elements(
-            utils.format_dec_dms,
-            pl.String,
-        ),
-    )
-
-    df = (
+    return (
         # pylint: disable=duplicate-code
         df.with_columns(
             [
@@ -95,22 +74,22 @@ def transform(df: pl.DataFrame) -> pl.DataFrame:
             ],
         )
         .drop("ra_dec_degrees")
-    )
-
-    # Add known_ps.pos=(ra,dec) for querying with pgSphere
-    df = df.with_columns(
-        pl.concat_str(["known_ps.ra", "known_ps.dec"], separator=",")
-        .alias("known_ps.pos")
-        .map_elements(utils.add_parenthesis, pl.String),
-    )
-
-    return df.with_columns(
-        # Catalogue columns
-        pl.lit("ATNF pulsar catalogue").alias("cat.name"),
-        pl.lit(ATNF_BASE_URL).alias("cat.url"),
-        pl.lit(1).alias("catalogue_id"),
-        # CatalogueVisit columns
-        pl.lit(1).alias("catalogue_visit_id"),
+        .with_columns(
+            [
+                pl.concat_str(["known_ps.ra", "known_ps.dec"], separator=",")
+                .alias("known_ps.pos")
+                .map_elements(
+                    utils.add_parenthesis,
+                    return_dtype=pl.String,
+                ),
+                # Catalogue columns
+                pl.lit("ATNF pulsar catalogue").alias("cat.name"),
+                pl.lit(ATNF_BASE_URL).alias("cat.url"),
+                pl.lit(1).alias("catalogue_id"),
+                # CatalogueVisit columns
+                pl.lit(1).alias("catalogue_visit_id"),
+            ],
+        )
     )
 
 

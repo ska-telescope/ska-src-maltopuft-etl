@@ -4,7 +4,6 @@ import logging
 from pathlib import Path
 from typing import Any
 
-import pandas as pd
 import polars as pl
 
 from ska_src_maltopuft_etl.core.config import config
@@ -113,6 +112,12 @@ def extract(
         rows.append(parse_candidate_dir(candidate_dir=candidate_dir))
 
     cand_df = cand_df.vstack(pl.DataFrame(rows))
+
+    # Because utc_stop is often null the utc_stop column in the DataFrame
+    # is likely to be naive timezone so we explictly set it to UTC.
+    cand_df = cand_df.with_columns(
+        pl.col("utc_stop").dt.replace_time_zone("UTC"),
+    )
     logger.info("Extract routine completed successfully")
     return cand_df
 
@@ -139,10 +144,11 @@ def transform(
     if len(df) == 0:
         return pl.DataFrame(), pl.DataFrame()
 
-    obs_pd = transform_observation(df=df)
-    obs_df: pl.DataFrame = pl.from_pandas(obs_pd)
+    obs_df = transform_observation(df=df)
 
-    partition_key += "_"
+    if partition_key != "":
+        partition_key += "_"
+
     obs_df_parquet_path = output_path / f"{partition_key}obs_df.parquet"
     logger.info(
         f"Writing transformed observation data to {obs_df_parquet_path}",
@@ -165,8 +171,8 @@ def transform(
 
 
 def load(
-    obs_df: pd.DataFrame,
-    cand_df: pd.DataFrame,
+    obs_df: pl.DataFrame,
+    cand_df: pl.DataFrame,
 ) -> None:
     """Load MeerTRAP data into a database.
 
@@ -209,14 +215,15 @@ def load(
         )
 
         with engine.connect() as conn:
-            for obs_idx in unique_observations.index:
-                obs_id = unique_observations.loc[obs_idx]["observation_id"]
-
+            for row in unique_observations.iter_rows(named=True):
                 with conn.begin():
                     db = DatabaseLoader(conn=conn)
                     insert_observation_by_row(
-                        obs_handler,
-                        cand_handler,
-                        obs_id,
-                        db,
+                        obs_handler=obs_handler,
+                        cand_handler=cand_handler,
+                        obs_id=row["observation_id"],
+                        db=db,
                     )
+                del db
+
+        logger.info("Successfully loaded candidate data")

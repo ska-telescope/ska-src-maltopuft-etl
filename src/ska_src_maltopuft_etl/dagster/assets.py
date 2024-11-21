@@ -98,6 +98,6 @@ def load_meerkat_data(
     """Load MeerTRAP candidate and observation data into MALTOPUFTDB."""
     obs_df, cand_df = transform_meerkat_data
     load(
-        obs_df=obs_df.to_pandas(),
-        cand_df=cand_df.to_pandas(),
+        obs_df=obs_df,
+        cand_df=cand_df,
     )

@@ -8,132 +8,205 @@ import polars as pl
 
 from ska_src_maltopuft_etl import utils
 from ska_src_maltopuft_etl.core.exceptions import UnexpectedShapeError
-from ska_src_maltopuft_etl.meertrap.candidate.extract import SPCCL_COLUMNS
 
 from .constants import MHZ_TO_HZ, SPEED_OF_LIGHT_M_PER_S
 
+FILE_TO_DF_COLUMNS = {
+    "filename": "filename",
+    "candidate": "candidate",
+    "beams.ca_target_request.beams": "beams.beams",
+    "beams.ca_target_request.tilings": "beams.tilings",
+    "beams.coherent_beam_shape.angle": "cb.angle",
+    "beams.coherent_beam_shape.overlap": "cb.fraction_overlap",
+    "beams.coherent_beam_shape.x": "cb.x",
+    "beams.coherent_beam_shape.y": "cb.y",
+    "beams.host_beams": "beams.host_beams",
+    "observation.bw": "obs.bw",
+    "observation.cfreq": "obs.cfreq",
+    "observation.nbit": "obs.nbit",
+    "observation.nchan": "obs.em_xel",
+    "observation.npol": "obs.pol_xel",
+    "observation.tsamp": "obs.t_resolution",
+    "sb.id": "mk_sb.id",
+    "sb.id_code": "mk_sb.id_code",
+    "sb.actual_start_time": "sb.start_at",
+    "sb.expected_duration_seconds": "sb.expected_duration_seconds",
+    "sb.proposal_id": "mk_sb.proposal_id",
+    "sb.script_profile_config": "sb.script_profile_config",
+    "sb.targets": "sb.targets",
+    "utc_start": "obs.t_min",
+    "utc_stop": "obs.t_max",
+    "mjd": "mjd",
+    "dm": "cand.dm",
+    "width": "cand.width",
+    "snr": "cand.snr",
+    "beam": "cand.beam",
+    "ra": "cand.ra",
+    "dec": "cand.dec",
+    "plot_file": "cand.plot_file",
+}
 
-def get_base_df(df: pd.DataFrame) -> pd.DataFrame:
+
+def get_base_df(df: pl.DataFrame) -> pl.DataFrame:
     """Initialise the transformed DataFrame."""
-    base_df = df[["candidate", *SPCCL_COLUMNS]]
-    base_df["sb.start_at"] = pd.to_datetime(df["sb.actual_start_time"])
-    base_df["obs.t_min"] = pd.to_datetime(df["utc_start"])
-    return base_df
+    return df.select(
+        [
+            "candidate",
+            "filename",
+            "sb.start_at",
+            "obs.t_min",
+            "obs.t_max",
+            "beams.host_beams",
+        ],
+    )
 
 
 def transform_observation(
     df: pl.DataFrame,
-) -> pd.DataFrame:
+) -> pl.DataFrame:
     """MeerTRAP observation transformation entrypoint."""
-    # Sort raw data by ascending observation time
-    raw_df = df.to_pandas().sort_values(by=["utc_start"]).reset_index()
-    out_df = get_base_df(df=raw_df)
-
-    # Schedule block
-    sb_uniq_df = raw_df.drop_duplicates(subset=["sb.id"])
-    sb_df = get_sb_df(df=sb_uniq_df)
-    meerkat_sb_df = get_meerkat_sb_df(df=sb_uniq_df)
-    sb_df = sb_df.merge(
-        meerkat_sb_df,
-        left_index=True,
-        right_index=True,
-        validate="one_to_one",
+    df_in = df.rename(FILE_TO_DF_COLUMNS).sort(
+        ["obs.t_min", "obs.t_max"],
+        nulls_last=True,
     )
-    out_df = out_df.merge(
-        sb_df,
+
+    sb_df = get_sb_df(df=df_in.unique(subset=["mk_sb.id"], keep="first"))
+    df = sb_df.join(
+        get_base_df(df=df_in),
         on="sb.start_at",
         how="inner",
-        validate="many_to_one",
+        validate="1:m",
     )
 
-    # Observation
-    raw_df["sb.est_end_at"] = out_df["sb.est_end_at"].to_numpy()
-    obs_uniq_df = raw_df.sort_values(
-        by=["utc_start", "utc_stop"],
-        na_position="last",
-    ).drop_duplicates(
-        subset=["utc_start"],
+    df_in = df_in.with_columns(df["sb.est_end_at"])
+
+    obs_uniq_df = df_in.unique(
+        subset=["obs.t_min"],
         keep="first",
     )
 
-    coherent_beam_config_df = get_coherent_beam_config_df(df=obs_uniq_df)
     obs_df = get_obs_df(df=obs_uniq_df, sb_df=sb_df)
-    obs_df = obs_df.merge(
-        coherent_beam_config_df,
-        on=["candidate"],
-        validate="many_to_one",
-    ).drop(
-        columns="candidate",
-    )
-    out_df = out_df.merge(
-        obs_df,
-        on=["obs.t_min"],
-        how="inner",
-        validate="many_to_one",
-    )
-
+    coherent_beam_config_df = get_coherent_beam_config_df(df=obs_uniq_df)
     tiling_df = get_tiling_config_df(df=obs_uniq_df, obs_df=obs_df)
-    out_df = out_df.merge(
-        tiling_df,
-        on="observation_id",
-        how="left",
-        validate="many_to_many",
-    )
+    beam_df = get_beam_df(df=df, obs_df=obs_df)
+    host_df = get_host_df(df=beam_df)
 
-    beam_df = get_beam_df(df=raw_df, obs_df=obs_df)
-    host_df = beam_df.drop_duplicates(
-        subset=["host.ip_address", "host.hostname", "host.port"],
-    )
-    host_df["host_id"] = host_df.index.to_numpy()
-    beam_df = beam_df.merge(
-        host_df[["host_id", "host.ip_address", "host.hostname"]],
-        on=["host.ip_address", "host.hostname"],
-        how="left",
-    )
+    obs_df = obs_df.lazy()
+    coherent_beam_config_df = coherent_beam_config_df.lazy()
+    tiling_df = tiling_df.lazy()
+    beam_df = beam_df.lazy()
+    host_df = host_df.lazy()
+    df = df.lazy()
 
-    if beam_df["host_id"].isna().to_numpy().any():
-        msg = "Merge resulted in null host_id."
-        raise UnexpectedShapeError(msg)
+    df = (
+        obs_df.join(
+            coherent_beam_config_df,
+            on=["candidate"],
+            how="inner",
+            validate="m:1",
+        )
+        .drop("candidate")
+        .join(
+            df,
+            on="obs.t_min",
+            how="inner",
+            validate="1:m",
+        )
+        .drop("obs.t_max_right")
+        .join(
+            tiling_df,
+            how="right",
+            on="observation_id",
+            validate="m:m",
+        )
+        .join(
+            beam_df.join(
+                host_df,
+                on=["host.ip_address", "host.hostname", "host.port"],
+                how="left",
+                validate="m:1",
+            ),
+            on=["observation_id"],
+            how="outer",
+            validate="m:m",
+            coalesce=True,
+        )
+    ).collect(streaming=True)
 
-    out_df = out_df.merge(
-        beam_df,
-        on=["observation_id"],
-        how="outer",
-        validate="many_to_many",
-    )
-    out_df = out_df.drop(columns=["candidate_y"]).rename(
-        columns={"candidate_x": "candidate"},
-    )
+    for col in df.columns:
+        if "_id" not in col:
+            continue
+        if df[col].is_null().any():
+            msg = f"Merge resulted in null {col}."
+            raise UnexpectedShapeError(msg)
 
-    if out_df["host_id"].isna().to_numpy().any():
-        msg = "Merge resulted in null host_id."
-        raise UnexpectedShapeError(msg)
-
-    return out_df
+    return df
 
 
-def get_sb_df(df: pd.DataFrame) -> pd.DataFrame:
+def get_sb_df(df: pl.DataFrame) -> pl.DataFrame:
     """Returns a dataframe with unique schedule block rows."""
-    sb_df = pd.DataFrame(
-        data={
-            "expected_duration_seconds": df["sb.expected_duration_seconds"],
-            "script_profile_config": df["sb.script_profile_config"],
-            "targets": df["sb.targets"],
-            "sb.start_at": df["sb.actual_start_time"],
-        },
+
+    def handle_zero_durations(sb_df: pl.DataFrame) -> pl.DataFrame:
+        """Handles rows with zero durations by extracting duration from schedule
+        block configuration script.
+        """
+        # Extract durations from script_profile_config
+        summed_durations = sb_df.select(
+            pl.col("sb.script_profile_config")
+            .str.extract_all(r"duration=\d+(\.\d+)?\\n")
+            .explode()
+            .str.extract(r"(\d+(\.\d+)?)")
+            .cast(pl.Int32)
+            .sum()
+            .alias("sb.duration"),
+        )
+
+        # Return summed durations if expected_duration_seconds is zero
+        return sb_df.with_columns(
+            [
+                pl.when(pl.col("sb.expected_duration_seconds") == 0)
+                .then(summed_durations["sb.duration"])
+                .otherwise(pl.col("sb.expected_duration_seconds"))
+                .alias("sb.expected_duration_seconds"),
+            ],
+        )
+
+    sb_df = df.select(
+        "sb.expected_duration_seconds",
+        "sb.script_profile_config",
+        "sb.targets",
+        "sb.start_at",
+        "mk_sb.id",
+        "mk_sb.id_code",
+        "mk_sb.proposal_id",
     )
 
     sb_df = handle_zero_durations(sb_df)
-
-    sb_df["expected_duration_seconds"] = pd.to_timedelta(
-        sb_df["expected_duration_seconds"],
-        unit="s",
+    sb_df = (
+        sb_df.with_columns(
+            [
+                (
+                    pl.col("sb.start_at")
+                    + pl.duration(seconds="sb.expected_duration_seconds")
+                ).alias("sb.est_end_at"),
+            ],
+        )
+        .drop(
+            [
+                "sb.expected_duration_seconds",
+                "sb.script_profile_config",
+                "sb.targets",
+            ],
+        )
+        .with_row_index(
+            name="schedule_block_id",
+            offset=1,
+        )
+        .with_row_index(
+            name="meerkat_schedule_block_id",
+            offset=1,
+        )
     )
-    sb_df["sb.est_end_at"] = (
-        sb_df["sb.start_at"] + sb_df["expected_duration_seconds"]
-    )
-    sb_df = sb_df[["sb.start_at", "sb.est_end_at"]]
-    sb_df["schedule_block_id"] = sb_df.index.to_numpy()
 
     num_sb = df.shape[0]
     if sb_df.shape[0] != num_sb:
@@ -143,69 +216,21 @@ def get_sb_df(df: pd.DataFrame) -> pd.DataFrame:
     return sb_df
 
 
-def handle_zero_durations(sb_df: pd.DataFrame) -> pd.DataFrame:
-    """Handles rows with zero durations by extracting duration from schedule
-    block configuration script.
-    """
-    null_duration_idx = sb_df[
-        sb_df["expected_duration_seconds"] == 0
-    ].index.tolist()
-    if null_duration_idx:
-        temp_df = sb_df.loc[null_duration_idx]
-        durations = temp_df["script_profile_config"].str.extractall(
-            r"duration=(?P<duration>\d+(\.\d+)?)\\n",
-        )
-        durations = durations.drop(
-            columns=[col for col in durations.columns if col != "duration"],
-        )
-        sb_df.loc[null_duration_idx, "expected_duration_seconds"] = (
-            durations["duration"].astype(float).groupby(level=0).sum()
-        )
-    return sb_df
-
-
-def get_meerkat_sb_df(df: pd.DataFrame) -> pd.DataFrame:
-    """Returns a dataframe with unique Meerkat schedule block rows."""
-    meerkat_sb_df = pd.DataFrame(
-        data={
-            "meerkat_schedule_block_id": df.index.to_numpy(),
-            "mk_sb.meerkat_id": df["sb.id"],
-            "mk_sb.meerkat_id_code": df["sb.id_code"],
-            "mk_sb.proposal_id": df["sb.proposal_id"],
-        },
-    )
-
-    num_sb = df.shape[0]
-    if meerkat_sb_df.shape[0] != num_sb:
-        msg = f"Expected {num_sb}, got {meerkat_sb_df.shape[0]}"
-        raise UnexpectedShapeError(msg)
-    return meerkat_sb_df
-
-
-def get_coherent_beam_config_df(df: pd.DataFrame) -> pd.DataFrame:
+def get_coherent_beam_config_df(df: pl.DataFrame) -> pl.DataFrame:
     """Returns a dataframe with unique coherent beam configuration rows."""
     uniq_cols = ["cb.angle", "cb.fraction_overlap", "cb.x", "cb.y"]
-    cb_config_df = pd.DataFrame(
-        data={
-            "candidate": df["candidate"].to_numpy(),
-            "cb.angle": df["beams.coherent_beam_shape.angle"],
-            "cb.fraction_overlap": df["beams.coherent_beam_shape.overlap"],
-            "cb.x": df["beams.coherent_beam_shape.x"],
-            "cb.y": df["beams.coherent_beam_shape.y"],
-        },
-    )
-    uniq_cb_config_df = cb_config_df.drop_duplicates(subset=uniq_cols).drop(
-        columns=["candidate"],
-    )
-    uniq_cb_config_df["coherent_beam_config_id"] = (
-        uniq_cb_config_df.index.to_numpy()
+    cb_config_df = df.select("candidate", *uniq_cols)
+
+    uniq_cb_config_df = cb_config_df.unique(subset=uniq_cols).with_row_index(
+        name="coherent_beam_config_id",
+        offset=1,
     )
 
-    return cb_config_df.merge(
+    return cb_config_df.join(
         uniq_cb_config_df,
         on=uniq_cols,
         how="left",
-        validate="many_to_one",
+        validate="m:1",
     )
 
 
@@ -220,132 +245,123 @@ def find_parent_interval(
     `est_end_time` is guaranteed to be less than (or equal to) the actual end
     time due to the additional time taken to schedule observations.
     """
-    parent_row = parent_df[
-        (
-            (parent_df["sb.start_at"] <= child_time)
-            & (
-                parent_df["sb.est_end_at"] + dt.timedelta(hours=1)
-                >= child_time
-            )
-        )
-    ]
-    if not parent_row.empty:
-        return parent_row["schedule_block_id"].to_numpy()[0]
+    parent_row = parent_df.filter(
+        (pl.col("sb.start_at") <= child_time)
+        & (pl.col("sb.est_end_at") + pl.duration(hours=1) >= child_time),
+    )
+
+    if parent_row.height > 0:
+        return parent_row["schedule_block_id"][0]
     return None
 
 
-def get_pol_states(npol: int) -> str | None:
-    """Returns a string of comma separated polarisation states for the given
-    number of polarisations.
-
-    Args:
-        npol (int): The number of polarisations.
-
-    Returns:
-        str | None: Polarisation states.
-
-    """
-    # ruff: noqa: PLR2004
-    if npol == 1:
-        return "I"
-    if npol == 4:
-        return "I,Q,U,V"
-
-    return None
-
-
-def get_dataproduct_type(npol: int) -> str | None:
-    """Returns the data product type for the given number of polarisations.
-
-    Args:
-        npol (int): The number of polarisations.
-
-    Returns:
-        str | None: The data product type.
-
-    """
-    # ruff: noqa: PLR2004
-    if npol == 1:
-        return "dynamic spectrum"
-    if npol == 4:
-        return "cube"
-    return None
-
-
-def fill_t_max(row: pd.Series) -> dt.datetime:
-    """Observation t_max fill strategy.
-
-    1. If t_max is not null, then use the given value of t_max.
-    2. If t_max is null then use the minimum value of the schedule block end
-        time or the start time of the next observation.
-    """
-    if not pd.isna(row["obs.t_max"]):
-        return row["obs.t_max"]
-    return min(row["sb.est_end_at"], row["next_t_min"])
-
-
-def handle_null_stop(df: pd.DataFrame) -> pd.DataFrame:
+def handle_null_stop(df: pl.DataFrame) -> pl.DataFrame:
     """Handle null observation t_max."""
-    df["next_t_min"] = df[["obs.t_min"]].shift(periods=-1)
-    df["obs.t_max"] = df.apply(fill_t_max, axis=1)
-    return df
+    df = df.with_columns(
+        [pl.col("obs.t_min").shift(-1).alias("obs.next_t_min")],
+    )
+
+    return df.with_columns(
+        pl.when(pl.col("obs.t_max").is_not_null())
+        .then(pl.col("obs.t_max"))
+        .otherwise(
+            pl.min_horizontal(
+                pl.col("sb.est_end_at"),
+                pl.col("obs.next_t_min"),
+            ),
+        )
+        .alias("obs.t_max"),
+    ).drop("obs.next_t_min")
 
 
 def get_obs_df(
-    df: pd.DataFrame,
-    sb_df: pd.DataFrame,
-) -> pd.DataFrame:
+    df: pl.DataFrame,
+    sb_df: pl.DataFrame,
+) -> pl.DataFrame:
     """Returns a dataframe with unique observation rows."""
-    obs_df = pd.DataFrame(
-        data={
-            "candidate": df["candidate"].to_numpy(),
-            "sb.est_end_at": df["sb.est_end_at"].to_numpy(),
-            "obs.t_min": df["utc_start"].to_numpy(),
-            "obs.t_max": df["utc_stop"].to_numpy(),
-            "obs.t_resolution": df["observation.tsamp"].to_numpy(),
-            "obs.bw": df["observation.bw"],
-            "obs.cfreq": df["observation.cfreq"],
-            "obs.nbeam": df["observation.nbeam"],
-            "obs.nbit": df["observation.nbit"],
-            "obs.em_xel": df["observation.nchan"],
-            "obs.pol_xel": df["observation.npol"],
-            "obs.facility_name": "MeerTRAP",
-            "obs.instrument_name": "Meerkat",
-        },
-    )
 
-    obs_df["obs.em_min"] = (
-        SPEED_OF_LIGHT_M_PER_S
-        / (obs_df["obs.cfreq"] + obs_df["obs.bw"] / 2.0)
-        * MHZ_TO_HZ
-    )
-    obs_df["obs.em_max"] = (
-        SPEED_OF_LIGHT_M_PER_S
-        / (obs_df["obs.cfreq"] - obs_df["obs.bw"] / 2.0)
-        * MHZ_TO_HZ
-    )
-
-    obs_df["obs.dataproduct_type"] = (
-        obs_df["obs.pol_xel"].apply(get_dataproduct_type).astype(str)
-    )
-
-    obs_df["obs.pol_states"] = (
-        obs_df["obs.pol_xel"].apply(get_pol_states).astype(str)
-    )
-
-    obs_df["schedule_block_id"] = (
-        obs_df["obs.t_min"]
-        .apply(
-            find_parent_interval,
-            parent_df=sb_df,
+    def get_em_min() -> pl.Expr:
+        return (
+            SPEED_OF_LIGHT_M_PER_S
+            / (pl.col("obs.cfreq") + pl.col("obs.bw") / 2.0)
+            * MHZ_TO_HZ
         )
-        .astype(int)
+
+    def get_em_max() -> pl.Expr:
+        return (
+            SPEED_OF_LIGHT_M_PER_S
+            / (pl.col("obs.cfreq") - pl.col("obs.bw") / 2.0)
+            * MHZ_TO_HZ
+        )
+
+    def get_pol_states(npol: int) -> str | None:
+        """Returns a string of comma separated polarisation states for the given
+        number of polarisations.
+
+        Args:
+            npol (int): The number of polarisations.
+
+        Returns:
+            str | None: Polarisation states.
+
+        """
+        # ruff: noqa: PLR2004
+        if npol == 1:
+            return "I"
+        if npol == 4:
+            return "I,Q,U,V"
+
+        return None
+
+    def get_dataproduct_type(npol: int) -> str | None:
+        """Returns the data product type for the given number of polarisations.
+
+        Args:
+            npol (int): The number of polarisations.
+
+        Returns:
+            str | None: The data product type.
+
+        """
+        # ruff: noqa: PLR2004
+        if npol == 1:
+            return "dynamic spectrum"
+        if npol == 4:
+            return "cube"
+        return None
+
+    obs_df = (
+        df.select(
+            "candidate",
+            "sb.est_end_at",
+            *[col for col in df.columns if col.startswith("obs.")],
+        )
+        .with_columns(
+            pl.lit("MeerTRAP").alias("obs.facility_name"),
+            pl.lit("Meerkat").alias("obs.instrument_name"),
+            get_em_min().alias("obs.em_min"),
+            get_em_max().alias("obs.em_max"),
+            pl.col("obs.pol_xel")
+            .map_elements(get_dataproduct_type, return_dtype=pl.Utf8)
+            .alias("obs.dataproduct_type"),
+            pl.col("obs.pol_xel")
+            .map_elements(get_pol_states, return_dtype=pl.Utf8)
+            .alias("obs.pol_states"),
+            pl.col("obs.t_min")
+            .map_elements(
+                lambda x: find_parent_interval(x, sb_df),
+                return_dtype=pl.Int64,
+            )
+            .alias("schedule_block_id"),
+        )
+        .with_row_index(
+            name="observation_id",
+            offset=1,
+        )
     )
 
     # Handle utc_stop NaT
-    obs_df = handle_null_stop(df=obs_df)
-
-    obs_df["observation_id"] = obs_df.index.to_numpy()
+    obs_df = handle_null_stop(df=obs_df).drop("sb.est_end_at")
 
     if obs_df.shape[0] != df.shape[0]:
         msg = (
@@ -354,29 +370,13 @@ def get_obs_df(
         )
         raise UnexpectedShapeError(msg)
 
-    return obs_df[
-        [
-            "candidate",
-            "obs.dataproduct_type",
-            "obs.t_min",
-            "obs.t_max",
-            "obs.t_resolution",
-            "obs.em_min",
-            "obs.em_max",
-            "obs.em_xel",
-            "obs.pol_xel",
-            "obs.pol_states",
-            "obs.facility_name",
-            "obs.instrument_name",
-            "observation_id",
-        ]
-    ]
+    return obs_df
 
 
 def get_tiling_config_df(
-    df: pd.DataFrame,
-    obs_df: pd.DataFrame,
-) -> pd.DataFrame:
+    df: pl.DataFrame,
+    obs_df: pl.DataFrame,
+) -> pl.DataFrame:
     """Returns a dataframe with unique tiling configuration rows.
 
     Note that `beams.ca_target_request.tilings` is serialized as a string.
@@ -390,59 +390,75 @@ def get_tiling_config_df(
     :return: Pandas DataFrame with expanded tiling configurations and
         normalized target columns.
     """
-    tiling_df = pd.DataFrame(
-        data={
-            "observation_id": obs_df["observation_id"].to_numpy(),
-            "tilings": df["beams.ca_target_request.tilings"].apply(
-                ast.literal_eval,
-            ),
-        },
-    )
-
-    # Expand tilings list into rows
-    tiling_df = tiling_df.explode("tilings")
-
-    # Normalize tilings dict into columns
-    normalized_df = pd.json_normalize(tiling_df["tilings"].to_list())
-    normalized_df = normalized_df.set_index(tiling_df.index.values)
-    tiling_df = tiling_df.join(normalized_df, how="outer").drop(
-        columns=["tilings"],
-    )
-
-    # Convert reference frequency to MHz
-    tiling_df["reference_frequency"] = (
-        tiling_df["reference_frequency"].to_numpy() / MHZ_TO_HZ
-    )
-
-    # Normalise the target column
-    targets = (
-        tiling_df["target"]
-        .str.split(",", expand=True)
-        .rename(
-            columns={
-                0: "tiling.target",
-                1: "mode",
-                2: "tiling.ra",
-                3: "tiling.dec",
-            },
+    tiling_df = (
+        df.select(
+            "beams.tilings",
         )
-        .drop(columns=["mode"])
+        .with_columns(
+            obs_df.get_column("observation_id"),
+            pl.col("beams.tilings").map_elements(
+                ast.literal_eval,
+                return_dtype=pl.List(pl.Object),
+            ),
+        )
+        .explode("beams.tilings")
+        .with_row_index()
     )
 
-    targets[["tiling.ra", "tiling.dec"]] = targets.apply(
-        lambda row: pd.Series(
-            utils.hms_to_degrees(row["tiling.ra"], row["tiling.dec"]),
-        ),
-        axis=1,
+    tiling_df = (
+        tiling_df.join(
+            pl.json_normalize(
+                tiling_df.get_column("beams.tilings").to_numpy(),
+            ).with_row_index(),
+            on="index",
+            how="outer",
+            validate="1:1",
+            coalesce=True,
+        )
+        .drop(["beams.tilings", "index"])
+        .with_columns(
+            (pl.col("reference_frequency") / MHZ_TO_HZ),
+            pl.col("target").str.split(","),
+        )
+        .with_columns(
+            pl.col("target").list.get(0).alias("tiling.target"),
+            pl.col("target").list.get(2).alias("tiling.ra"),
+            pl.col("target").list.get(3).alias("tiling.dec"),
+        )
+        .drop("target")
+        .with_columns(
+            pl.struct(["tiling.ra", "tiling.dec"])
+            .map_elements(
+                lambda row: utils.hms_to_degrees(
+                    row["tiling.ra"],
+                    row["tiling.dec"],
+                ),
+            )
+            .alias("ra_dec_degrees"),
+        )
+        .with_columns(
+            pl.col("ra_dec_degrees")
+            .list.get(0)
+            .cast(pl.Float64)
+            .alias("tiling.ra"),
+            pl.col("ra_dec_degrees")
+            .list.get(1)
+            .cast(pl.Float64)
+            .alias("tiling.dec"),
+        )
+        .drop("ra_dec_degrees")
+        .with_columns(
+            pl.col("tiling.ra").alias("obs.s_ra"),
+            pl.col("tiling.dec").alias("obs.s_dec"),
+            pl.concat_str(["tiling.ra", "tiling.dec"], separator=",")
+            .alias("tiling.pos")
+            .map_elements(utils.add_parenthesis, pl.String),
+        )
+        .with_row_index(name="tiling_config_id", offset=1)
     )
 
-    targets["obs.s_ra"] = targets["tiling.ra"].to_numpy()
-    targets["obs.s_dec"] = targets["tiling.dec"].to_numpy()
-
-    tiling_df["tiling_config_id"] = tiling_df.index.to_numpy()
-    tiling_df = tiling_df.join(targets, how="outer")
     return tiling_df.rename(
-        columns={
+        {
             "coordinate_type": "tiling.coordinate_type",
             "epoch": "tiling.epoch",
             "epoch_offset": "tiling.epoch_offset",
@@ -455,7 +471,7 @@ def get_tiling_config_df(
     )
 
 
-def get_beam_df(df: pd.DataFrame, obs_df: pd.DataFrame) -> pd.DataFrame:
+def get_beam_df(df: pl.DataFrame, obs_df: pl.DataFrame) -> pl.DataFrame:
     """Returns a dataframe with unique observation beam rows.
 
     Note that `beams.host_beams` is serialized as a string.
@@ -471,78 +487,103 @@ def get_beam_df(df: pd.DataFrame, obs_df: pd.DataFrame) -> pd.DataFrame:
     :returns: Pandas DataFrame with expanded beam configurations and extracted
         hostnames.
     """
-    merged_df = df.merge(
-        obs_df,
-        left_on="utc_start",
-        right_on="obs.t_min",
+    merged_df = df.join(
+        obs_df.drop("candidate"),
+        on="obs.t_min",
         how="left",
+        validate="m:1",
     )
 
-    if merged_df["observation_id"].isna().to_numpy().any():
+    if merged_df["observation_id"].is_null().any():
         msg = "Merge resulted in null `observation_id` values"
         raise UnexpectedShapeError(msg)
     if merged_df.shape[0] != df.shape[0]:
         msg = "Merge resulted in unexpected row count"
         raise UnexpectedShapeError(msg)
 
-    # Create initial beam DataFrame
-    beam_df = pd.DataFrame(
-        {
-            "candidate": merged_df["candidate"],
-            "filename": merged_df["filename"],
-            "beams": merged_df["beams.host_beams"].apply(ast.literal_eval),
-            "observation_id": merged_df["observation_id"],
-            "utc_start": merged_df["utc_start"],
-        },
+    beam_df = (
+        merged_df.select(
+            [
+                pl.col("filename"),
+                pl.col("beams.host_beams")
+                .map_elements(ast.literal_eval)
+                .alias("beams"),
+                pl.col("observation_id"),
+            ],
+        )
+        .with_columns(
+            [
+                pl.col("filename")
+                .str.extract(r"(?P<hostname>tpn-\d+-\d+)")
+                .alias("host.hostname"),
+            ],
+        )
+        .explode("beams")
+    )
+    beam_df = beam_df.with_columns(pl.json_normalize(beam_df["beams"]))
+
+    return (
+        beam_df.rename(
+            {
+                "absnum": "beam.number",
+                "coherent": "beam.coherent",
+                "dec_dms": "beam.dec",
+                "mc_ip": "host.ip_address",
+                "mc_port": "host.port",
+                "ra_hms": "beam.ra",
+                "relnum": "beam.relnum",
+                "source": "beam.source",
+            },
+        )
+        .with_columns(
+            [
+                pl.struct(["beam.ra", "beam.dec"])
+                .map_elements(
+                    lambda row: utils.hms_to_degrees(
+                        row["beam.ra"],
+                        row["beam.dec"],
+                    ),
+                )
+                .alias("ra_dec_degrees"),
+            ],
+        )
+        .with_columns(
+            [
+                pl.col("ra_dec_degrees")
+                .list.get(0)
+                .cast(pl.Float64)
+                .alias("beam.ra"),
+                pl.col("ra_dec_degrees")
+                .list.get(1)
+                .cast(pl.Float64)
+                .alias("beam.dec"),
+            ],
+        )
+        .drop("ra_dec_degrees")
+        .unique(
+            subset=[
+                "beam.number",
+                "beam.coherent",
+                "beam.dec",
+                "host.ip_address",
+                "host.port",
+                "beam.ra",
+                "beam.relnum",
+                "beam.source",
+                "observation_id",
+            ],
+        )
+        .drop(["filename", "beams", "beam.relnum", "beam.source"])
+        .with_row_index(name="beam_id", offset=1)
     )
 
-    # Extract hostname from filename
-    beam_df["host.hostname"] = beam_df["filename"].str.extract(
-        r"(?P<hostname>tpn-\d+-\d+)",
+
+def get_host_df(df: pl.DataFrame) -> pl.DataFrame:
+    """Get unique host rows."""
+    return (
+        df.unique(
+            subset=["host.ip_address", "host.hostname", "host.port"],
+        )
+        .select(["host.ip_address", "host.hostname", "host.port"])
+        .with_row_index(name="host_id", offset=1)
     )
-
-    # Expand beams list into rows
-    beam_df = beam_df.explode("beams").reset_index()
-
-    # Normalize beams dict into columns
-    normalized_df = pd.json_normalize(beam_df["beams"].to_list())
-
-    beam_df = beam_df.merge(normalized_df, left_index=True, right_index=True)
-    beam_df = beam_df.drop(columns=["beams"])
-
-    beam_df = beam_df.rename(
-        columns={
-            "absnum": "beam.number",
-            "coherent": "beam.coherent",
-            "dec_dms": "beam.dec",
-            "mc_ip": "host.ip_address",
-            "mc_port": "host.port",
-            "ra_hms": "beam.ra",
-            "relnum": "beam.relnum",
-            "source": "beam.source",
-        },
-    )
-
-    beam_df[["beam.ra", "beam.dec"]] = beam_df.apply(
-        lambda row: pd.Series(
-            utils.hms_to_degrees(row["beam.ra"], row["beam.dec"]),
-        ),
-        axis=1,
-    )
-
-    beam_df = beam_df.drop_duplicates(
-        subset=[
-            "beam.number",
-            "beam.coherent",
-            "beam.dec",
-            "host.ip_address",
-            "host.port",
-            "beam.ra",
-            "beam.relnum",
-            "beam.source",
-            "observation_id",
-        ],
-    )
-    beam_df = beam_df.drop(columns=["beam.relnum", "beam.source"])
-    beam_df["beam_id"] = beam_df.index.to_numpy()
-    return beam_df
