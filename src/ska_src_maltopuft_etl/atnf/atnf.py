@@ -68,6 +68,35 @@ def transform(df: pl.DataFrame) -> pl.DataFrame:
         ),
     )
 
+    df = (
+        # pylint: disable=duplicate-code
+        df.with_columns(
+            [
+                pl.struct(["known_ps.ra", "known_ps.dec"])
+                .map_elements(
+                    lambda row: utils.hms_to_degrees(
+                        row["known_ps.ra"],
+                        row["known_ps.dec"],
+                    ),
+                )
+                .alias("ra_dec_degrees"),
+            ],
+        )
+        .with_columns(
+            [
+                pl.col("ra_dec_degrees")
+                .list.get(0)
+                .cast(pl.Float64)
+                .alias("known_ps.ra"),
+                pl.col("ra_dec_degrees")
+                .list.get(1)
+                .cast(pl.Float64)
+                .alias("known_ps.dec"),
+            ],
+        )
+        .drop("ra_dec_degrees")
+    )
+
     # Add known_ps.pos=(ra,dec) for querying with pgSphere
     df = df.with_columns(
         pl.concat_str(["known_ps.ra", "known_ps.dec"], separator=",")

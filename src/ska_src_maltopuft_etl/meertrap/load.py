@@ -180,8 +180,9 @@ def handler_insert_target(
             if db_row is None:
                 msg = (
                     "Can't find a duplicated record with "
-                    f"attributes {attrs}. This is a bug in the load "
-                    "method. Exiting without commiting records."
+                    f"attributes {attrs.to_dict(orient='records')}. "
+                    "This is a bug in the load method. Exiting without "
+                    "commiting records."
                 )
                 raise RuntimeError(msg) from exc
 

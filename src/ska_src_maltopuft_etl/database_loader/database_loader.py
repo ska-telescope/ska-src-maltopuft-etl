@@ -165,7 +165,7 @@ class DatabaseLoader:
         update_value = int(update_value)
 
         self.foreign_keys_map[key_name].append((initial_value, update_value))
-        logger.info(f"Updated foreign key map to: {self.foreign_keys_map}")
+        logger.debug(f"Updated foreign key map to: {self.foreign_keys_map}")
 
     def get_by(
         self,

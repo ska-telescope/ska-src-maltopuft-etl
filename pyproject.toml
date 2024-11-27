@@ -157,7 +157,7 @@ dummy-variable-rgx = "^(_+|(_+[a-zA-Z0-9_]*[a-zA-Z0-9]+?))$"
 
 [[tool.mypy.overrides]]
 module = [
-    "astropy.time",
+    "astropy.*",
     "psrqpy",
     "ska_ser_logging",
     "ska_src_maltopuft_backend.*",
