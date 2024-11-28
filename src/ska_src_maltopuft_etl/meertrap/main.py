@@ -23,10 +23,10 @@ def main() -> None:
         logger.info(f"Read parsed data from {output_parquet}")
     except FileNotFoundError:
         logger.warning(f"No parsed data found at {output_parquet}")
-    raw_df = extract()
-    logger.debug(f"Writing parsed data to {output_parquet}")
-    raw_df.write_parquet(output_parquet, compression="gzip")
-    logger.info(f"Parsed data written to {output_parquet} successfully")
+        raw_df = extract()
+        logger.debug(f"Writing parsed data to {output_parquet}")
+        raw_df.write_parquet(output_parquet, compression="gzip")
+        logger.info(f"Parsed data written to {output_parquet} successfully")
 
     obs_parquet = output_path / "obs_df.parquet"
     cand_parquet = output_path / "cand_df.parquet"

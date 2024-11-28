@@ -115,11 +115,32 @@ def transform_candidate(
         .alias("cand.observed_at"),
     ).drop("mjd")
 
-    cand_df = cand_df.with_columns(
-        pl.col("cand.ra").map_elements(utils.format_ra_hms, pl.String),
-    )
-    cand_df = cand_df.with_columns(
-        pl.col("cand.dec").map_elements(utils.format_dec_dms, pl.String),
+    cand_df = (
+        cand_df.with_columns(
+            [
+                pl.struct(["cand.ra", "cand.dec"])
+                .map_elements(
+                    lambda row: utils.hms_to_degrees(
+                        row["cand.ra"],
+                        row["cand.dec"],
+                    ),
+                )
+                .alias("ra_dec_degrees"),
+            ],
+        )
+        .with_columns(
+            [
+                pl.col("ra_dec_degrees")
+                .list.get(0)
+                .cast(pl.Float64)
+                .alias("cand.ra"),
+                pl.col("ra_dec_degrees")
+                .list.get(1)
+                .cast(pl.Float64)
+                .alias("cand.dec"),
+            ],
+        )
+        .drop("ra_dec_degrees")
     )
 
     # Add cand.pos=(ra,dec) for querying with pgSphere

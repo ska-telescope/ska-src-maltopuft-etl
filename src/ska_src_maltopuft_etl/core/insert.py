@@ -65,5 +65,6 @@ def insert_(
         f"Inserted {len(returned_ids)} rows into {model_class.__table__.name}",
     )
     ids = flatten_ids(returned_ids=returned_ids)
-    logger.debug(f"Inserted IDs {ids} into {model_class.__table__.name}")
+    logger.debug(f"Inserted parameters are: ({ids},{data})")
+    logger.info(f"Inserted IDs {ids} into {model_class.__table__.name}")
     return ids

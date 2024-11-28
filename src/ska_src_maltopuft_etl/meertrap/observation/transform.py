@@ -101,7 +101,7 @@ def transform_observation(
         how="outer",
         validate="many_to_many",
     )
-    out_df = out_df.drop(columns="candidate_y").rename(
+    out_df = out_df.drop(columns=["candidate_y"]).rename(
         columns={"candidate_x": "candidate"},
     )
 
@@ -429,9 +429,11 @@ def get_tiling_config_df(
         .drop(columns=["mode"])
     )
 
-    targets["tiling.ra"] = targets["tiling.ra"].apply(utils.format_ra_hms)
-    targets["tiling.dec"] = targets["tiling.dec"].apply(
-        utils.format_dec_dms,
+    targets[["tiling.ra", "tiling.dec"]] = targets.apply(
+        lambda row: pd.Series(
+            utils.hms_to_degrees(row["tiling.ra"], row["tiling.dec"]),
+        ),
+        axis=1,
     )
 
     targets["obs.s_ra"] = targets["tiling.ra"].to_numpy()
@@ -521,8 +523,12 @@ def get_beam_df(df: pd.DataFrame, obs_df: pd.DataFrame) -> pd.DataFrame:
         },
     )
 
-    beam_df["beam.ra"] = beam_df["beam.ra"].apply(utils.format_ra_hms)
-    beam_df["beam.dec"] = beam_df["beam.dec"].apply(utils.format_dec_dms)
+    beam_df[["beam.ra", "beam.dec"]] = beam_df.apply(
+        lambda row: pd.Series(
+            utils.hms_to_degrees(row["beam.ra"], row["beam.dec"]),
+        ),
+        axis=1,
+    )
 
     beam_df = beam_df.drop_duplicates(
         subset=[
