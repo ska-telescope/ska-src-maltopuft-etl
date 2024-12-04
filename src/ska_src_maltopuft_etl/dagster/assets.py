@@ -3,61 +3,82 @@
 # pylint: disable=redefined-outer-name
 
 import base64
-import logging
 from io import BytesIO
-from logging import Logger
-from pathlib import Path, PosixPath
+from pathlib import Path
 
 import matplotlib.pyplot as plt
 import polars as pl
-from dagster import MaterializeResult, MetadataValue, asset
-from ska_ser_logging import configure_logging
+from dagster import (
+    AssetExecutionContext,
+    DailyPartitionsDefinition,
+    MaterializeResult,
+    MetadataValue,
+    asset,
+)
 
 from ska_src_maltopuft_etl.core.config import config
 from ska_src_maltopuft_etl.meertrap.meertrap import extract, load, transform
 
-
-@asset
-def logger() -> Logger:
-    """Configure the logger."""
-    configure_logging(logging.INFO)
-    return logging.getLogger(__name__)
+daily_sb_id_partitions = DailyPartitionsDefinition(
+    start_date="2023-11-12",
+    end_date="2023-12-12",
+)
 
 
-@asset
-def extract_meertrap_data(logger: Logger) -> pl.DataFrame:
+@asset(partitions_def=daily_sb_id_partitions)
+def extract_meertrap_data(
+    context: AssetExecutionContext,
+) -> pl.DataFrame:
     """Extract MeerTRAP observation and candidate data."""
     # pylint: disable=duplicate-code
-    output_path: PosixPath = config.get("output_path", Path())
-    output_parquet = output_path / "candidates.parquet"
+
+    partition_key = context.partition_key
+
+    output_path: Path = config.get("output_path", Path())
+    output_path.mkdir(parents=True, exist_ok=True)
+    output_parquet = output_path / f"{partition_key}_raw.parquet"
+
     try:
         raw_df = pl.read_parquet(output_parquet)
     except FileNotFoundError:
-        raw_df = extract()
-        logger.info(f"Writing parsed data to {output_parquet}")
+        raw_df = extract(
+            root_path=config.get("data_path", "") / partition_key,
+        )
         raw_df.write_parquet(output_parquet, compression="gzip")
-        logger.info(f"Parsed data written to {output_parquet} successfully")
     return raw_df
 
 
-@asset
+@asset(partitions_def=daily_sb_id_partitions)
 def transform_meerkat_data(
+    context: AssetExecutionContext,
     extract_meertrap_data: pl.DataFrame,
 ) -> tuple[pl.DataFrame, pl.DataFrame]:
     """Transform MeerTRAP observation and candidate data to MALTOPUFTDB
     schema.
     """
-    obs_df, cand_df = transform(df=extract_meertrap_data)
+    partition_key = context.asset_partition_key_for_input(
+        "extract_meertrap_data",
+    )
+
+    obs_df, cand_df = transform(
+        df=extract_meertrap_data,
+        partition_key=partition_key,
+    )
     return obs_df, cand_df
 
 
-@asset
+@asset(partitions_def=daily_sb_id_partitions)
 def plot_cand_obs_count(
     transform_meerkat_data: tuple[pl.DataFrame, pl.DataFrame],
 ) -> MaterializeResult:
     """Plot the number of candidates and observations on a bar chart."""
     obs_df, cand_df = transform_meerkat_data
-    num_obs = len(obs_df["observation_id"].unique())
+
+    try:
+        num_obs = len(obs_df["observation_id"].unique())
+    except pl.exceptions.ColumnNotFoundError:
+        num_obs = 0
+
     num_cands = len(cand_df)
 
     plt.figure(figsize=(8, 8), facecolor=None)
@@ -70,7 +91,7 @@ def plot_cand_obs_count(
     return MaterializeResult(metadata={"plot": MetadataValue.md(md_content)})
 
 
-@asset
+@asset(partitions_def=daily_sb_id_partitions)
 def load_meerkat_data(
     transform_meerkat_data: tuple[pl.DataFrame, pl.DataFrame],
 ) -> None:

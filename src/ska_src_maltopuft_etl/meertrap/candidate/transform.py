@@ -16,7 +16,6 @@ def transform_spccl(df: pl.DataFrame, obs_df: pl.DataFrame) -> pl.DataFrame:
     """MeerTRAP candidate transformation entrypoint."""
     candidate_df = transform_candidate(df=df, obs_df=obs_df)
     candidate_df = transform_sp_candidate(candidate_df=candidate_df)
-    candidate_df = candidate_df.sort(by="candidate")
 
     # Deduplicate candidates
     initial_cand_num = len(candidate_df)

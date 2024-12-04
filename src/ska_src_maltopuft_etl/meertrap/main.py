@@ -25,6 +25,7 @@ def main() -> None:
         logger.warning(f"No parsed data found at {output_parquet}")
         raw_df = extract()
         logger.debug(f"Writing parsed data to {output_parquet}")
+        output_path.mkdir(parents=True, exist_ok=True)
         raw_df.write_parquet(output_parquet, compression="gzip")
         logger.info(f"Parsed data written to {output_parquet} successfully")
 
@@ -42,8 +43,8 @@ def main() -> None:
             f"No cached transformed data found at {obs_parquet} and "
             f"{cand_parquet}",
         )
-
-    obs_df, cand_df = transform(df=raw_df)
+        output_path.mkdir(parents=True, exist_ok=True)
+        obs_df, cand_df = transform(df=raw_df)
 
     load(
         obs_df=obs_df.to_pandas(),
