@@ -27,8 +27,8 @@ FILE_TO_DF_COLUMNS = {
     "observation.nchan": "obs.em_xel",
     "observation.npol": "obs.pol_xel",
     "observation.tsamp": "obs.t_resolution",
-    "sb.id": "mk_sb.id",
-    "sb.id_code": "mk_sb.id_code",
+    "sb.id": "mk_sb.meerkat_id",
+    "sb.id_code": "mk_sb.meerkat_id_code",
     "sb.actual_start_time": "sb.start_at",
     "sb.expected_duration_seconds": "sb.expected_duration_seconds",
     "sb.proposal_id": "mk_sb.proposal_id",
@@ -36,28 +36,27 @@ FILE_TO_DF_COLUMNS = {
     "sb.targets": "sb.targets",
     "utc_start": "obs.t_min",
     "utc_stop": "obs.t_max",
-    "mjd": "mjd",
+    "mjd": "cand.mjd",
     "dm": "cand.dm",
     "width": "cand.width",
     "snr": "cand.snr",
     "beam": "cand.beam",
     "ra": "cand.ra",
     "dec": "cand.dec",
-    "plot_file": "cand.plot_file",
+    "plot_file": "sp_cand.plot_path",
 }
 
 
 def get_base_df(df: pl.DataFrame) -> pl.DataFrame:
     """Initialise the transformed DataFrame."""
     return df.select(
-        [
-            "candidate",
-            "filename",
-            "sb.start_at",
-            "obs.t_min",
-            "obs.t_max",
-            "beams.host_beams",
-        ],
+        "candidate",
+        "filename",
+        "sb.start_at",
+        "obs.t_min",
+        "obs.t_max",
+        "beams.host_beams",
+        *[col for col in df.columns if col.startswith(("cand.", "sp_cand."))],
     )
 
 
@@ -70,7 +69,9 @@ def transform_observation(
         nulls_last=True,
     )
 
-    sb_df = get_sb_df(df=df_in.unique(subset=["mk_sb.id"], keep="first"))
+    sb_df = get_sb_df(
+        df=df_in.unique(subset=["mk_sb.meerkat_id"], keep="first"),
+    )
     df = sb_df.join(
         get_base_df(df=df_in),
         on="sb.start_at",
@@ -88,50 +89,49 @@ def transform_observation(
     obs_df = get_obs_df(df=obs_uniq_df, sb_df=sb_df)
     coherent_beam_config_df = get_coherent_beam_config_df(df=obs_uniq_df)
     tiling_df = get_tiling_config_df(df=obs_uniq_df, obs_df=obs_df)
-    beam_df = get_beam_df(df=df, obs_df=obs_df)
-    host_df = get_host_df(df=beam_df)
-
-    obs_df = obs_df.lazy()
-    coherent_beam_config_df = coherent_beam_config_df.lazy()
-    tiling_df = tiling_df.lazy()
-    beam_df = beam_df.lazy()
-    host_df = host_df.lazy()
-    df = df.lazy()
 
     df = (
-        obs_df.join(
-            coherent_beam_config_df,
-            on=["candidate"],
-            how="inner",
-            validate="m:1",
-        )
-        .drop("candidate")
-        .join(
-            df,
-            on="obs.t_min",
-            how="inner",
-            validate="1:m",
-        )
-        .drop("obs.t_max_right")
-        .join(
-            tiling_df,
-            how="right",
-            on="observation_id",
-            validate="m:m",
-        )
-        .join(
-            beam_df.join(
-                host_df,
-                on=["host.ip_address", "host.hostname", "host.port"],
+        df.join(
+            obs_df.join(
+                coherent_beam_config_df,
+                on=["obs.t_min"],
+                how="inner",
+                validate="1:1",
+            ).join(
+                tiling_df,
                 how="left",
-                validate="m:1",
+                on="observation_id",
+                validate="m:m",
             ),
-            on=["observation_id"],
-            how="outer",
+            on=["obs.t_min"],
+            how="left",
             validate="m:m",
-            coalesce=True,
         )
-    ).collect(streaming=True)
+        .with_columns(pl.col("obs.t_max_right").alias("obs.t_max"))
+        .drop(
+            "beams.host_beams_right",
+            "obs.t_max_right",
+            "schedule_block_id_right",
+            "candidate_right",
+        )
+    )
+
+    beam_df = get_beam_df(df=df)
+    host_df = get_host_df(df=beam_df)
+
+    beam_df = beam_df.join(
+        host_df,
+        on=["host.ip_address", "host.hostname", "host.port"],
+        how="left",
+        validate="m:1",
+    )
+
+    df = df.join(
+        beam_df,
+        on=["observation_id"],
+        how="full",
+        validate="m:m",
+    )
 
     for col in df.columns:
         if "_id" not in col:
@@ -176,8 +176,8 @@ def get_sb_df(df: pl.DataFrame) -> pl.DataFrame:
         "sb.script_profile_config",
         "sb.targets",
         "sb.start_at",
-        "mk_sb.id",
-        "mk_sb.id_code",
+        "mk_sb.meerkat_id",
+        "mk_sb.meerkat_id_code",
         "mk_sb.proposal_id",
     )
 
@@ -218,8 +218,14 @@ def get_sb_df(df: pl.DataFrame) -> pl.DataFrame:
 
 def get_coherent_beam_config_df(df: pl.DataFrame) -> pl.DataFrame:
     """Returns a dataframe with unique coherent beam configuration rows."""
-    uniq_cols = ["cb.angle", "cb.fraction_overlap", "cb.x", "cb.y"]
-    cb_config_df = df.select("candidate", *uniq_cols)
+    uniq_cols = [
+        "obs.t_min",
+        "cb.angle",
+        "cb.fraction_overlap",
+        "cb.x",
+        "cb.y",
+    ]
+    cb_config_df = df.select(uniq_cols)
 
     uniq_cb_config_df = cb_config_df.unique(subset=uniq_cols).with_row_index(
         name="coherent_beam_config_id",
@@ -334,6 +340,7 @@ def get_obs_df(
         df.select(
             "candidate",
             "sb.est_end_at",
+            "beams.host_beams",
             *[col for col in df.columns if col.startswith("obs.")],
         )
         .with_columns(
@@ -353,6 +360,11 @@ def get_obs_df(
                 return_dtype=pl.Int64,
             )
             .alias("schedule_block_id"),
+        )
+        .drop(
+            "obs.bw",
+            "obs.cfreq",
+            "obs.nbit",
         )
         .with_row_index(
             name="observation_id",
@@ -450,9 +462,6 @@ def get_tiling_config_df(
         .with_columns(
             pl.col("tiling.ra").alias("obs.s_ra"),
             pl.col("tiling.dec").alias("obs.s_dec"),
-            pl.concat_str(["tiling.ra", "tiling.dec"], separator=",")
-            .alias("tiling.pos")
-            .map_elements(utils.add_parenthesis, pl.String),
         )
         .with_row_index(name="tiling_config_id", offset=1)
     )
@@ -471,7 +480,7 @@ def get_tiling_config_df(
     )
 
 
-def get_beam_df(df: pl.DataFrame, obs_df: pl.DataFrame) -> pl.DataFrame:
+def get_beam_df(df: pl.DataFrame) -> pl.DataFrame:
     """Returns a dataframe with unique observation beam rows.
 
     Note that `beams.host_beams` is serialized as a string.
@@ -487,77 +496,54 @@ def get_beam_df(df: pl.DataFrame, obs_df: pl.DataFrame) -> pl.DataFrame:
     :returns: Pandas DataFrame with expanded beam configurations and extracted
         hostnames.
     """
-    merged_df = df.join(
-        obs_df.drop("candidate"),
-        on="obs.t_min",
-        how="left",
-        validate="m:1",
-    )
-
-    if merged_df["observation_id"].is_null().any():
-        msg = "Merge resulted in null `observation_id` values"
-        raise UnexpectedShapeError(msg)
-    if merged_df.shape[0] != df.shape[0]:
-        msg = "Merge resulted in unexpected row count"
-        raise UnexpectedShapeError(msg)
-
     beam_df = (
-        merged_df.select(
-            [
-                pl.col("filename"),
-                pl.col("beams.host_beams")
-                .map_elements(ast.literal_eval)
-                .alias("beams"),
-                pl.col("observation_id"),
-            ],
+        df.select(
+            pl.col("filename"),
+            pl.col("beams.host_beams")
+            .map_elements(ast.literal_eval)
+            .alias("beams"),
+            pl.col("observation_id"),
         )
         .with_columns(
-            [
-                pl.col("filename")
-                .str.extract(r"(?P<hostname>tpn-\d+-\d+)")
-                .alias("host.hostname"),
-            ],
+            pl.col("filename")
+            .str.extract(r"(?P<hostname>tpn-\d+-\d+)")
+            .alias("host.hostname"),
         )
         .explode("beams")
+        .unnest("beams")
+    ).rename(
+        {
+            "absnum": "beam.number",
+            "coherent": "beam.coherent",
+            "dec_dms": "beam.dec",
+            "mc_ip": "host.ip_address",
+            "mc_port": "host.port",
+            "ra_hms": "beam.ra",
+            "relnum": "beam.relnum",
+            "source": "beam.source",
+        },
     )
-    beam_df = beam_df.with_columns(pl.json_normalize(beam_df["beams"]))
 
     return (
-        beam_df.rename(
-            {
-                "absnum": "beam.number",
-                "coherent": "beam.coherent",
-                "dec_dms": "beam.dec",
-                "mc_ip": "host.ip_address",
-                "mc_port": "host.port",
-                "ra_hms": "beam.ra",
-                "relnum": "beam.relnum",
-                "source": "beam.source",
-            },
+        beam_df.with_columns(
+            pl.struct(["beam.ra", "beam.dec"])
+            .map_elements(
+                lambda row: utils.hms_to_degrees(
+                    row["beam.ra"],
+                    row["beam.dec"],
+                ),
+            )
+            .alias("ra_dec_degrees"),
         )
         .with_columns(
-            [
-                pl.struct(["beam.ra", "beam.dec"])
-                .map_elements(
-                    lambda row: utils.hms_to_degrees(
-                        row["beam.ra"],
-                        row["beam.dec"],
-                    ),
-                )
-                .alias("ra_dec_degrees"),
-            ],
-        )
-        .with_columns(
-            [
-                pl.col("ra_dec_degrees")
-                .list.get(0)
-                .cast(pl.Float64)
-                .alias("beam.ra"),
-                pl.col("ra_dec_degrees")
-                .list.get(1)
-                .cast(pl.Float64)
-                .alias("beam.dec"),
-            ],
+            pl.col("ra_dec_degrees")
+            .list.get(0)
+            .cast(pl.Float64)
+            .alias("beam.ra"),
+            pl.col("ra_dec_degrees")
+            .list.get(1)
+            .cast(pl.Float64)
+            .alias("beam.dec"),
         )
         .drop("ra_dec_degrees")
         .unique(
@@ -573,7 +559,7 @@ def get_beam_df(df: pl.DataFrame, obs_df: pl.DataFrame) -> pl.DataFrame:
                 "observation_id",
             ],
         )
-        .drop(["filename", "beams", "beam.relnum", "beam.source"])
+        .drop(["filename", "beam.relnum", "beam.source"])
         .with_row_index(name="beam_id", offset=1)
     )
 

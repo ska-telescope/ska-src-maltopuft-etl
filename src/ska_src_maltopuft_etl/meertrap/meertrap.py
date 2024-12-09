@@ -115,9 +115,11 @@ def extract(
 
     # Because utc_stop is often null the utc_stop column in the DataFrame
     # is likely to be naive timezone so we explictly set it to UTC.
-    cand_df = cand_df.with_columns(
-        pl.col("utc_stop").dt.replace_time_zone("UTC"),
-    )
+    if cand_df.get_column("utc_stop").dtype == pl.Datetime:
+        cand_df = cand_df.with_columns(
+            pl.col("utc_stop").dt.replace_time_zone("UTC"),
+        )
+
     logger.info("Extract routine completed successfully")
     return cand_df
 
@@ -159,7 +161,7 @@ def transform(
         f"{obs_df_parquet_path}",
     )
 
-    cand_df = transform_spccl(df=df, obs_df=obs_df)
+    cand_df = transform_spccl(df=obs_df)
     cand_df_parquet_path = output_path / f"{partition_key}cand_df.parquet"
     logger.info(f"Writing transformed cand data to {cand_df_parquet_path}")
     cand_df.write_parquet(cand_df_parquet_path)
