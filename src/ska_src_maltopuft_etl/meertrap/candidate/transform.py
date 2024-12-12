@@ -22,22 +22,19 @@ def transform_spccl(df: pl.DataFrame) -> pl.DataFrame:
     logger.info(
         f"Removing duplicate candidates from {initial_cand_num} records",
     )
-    candidate_df = (
-        candidate_df.sort(by="candidate")
-        .unique(
-            subset=[
-                "cand.dm",
-                "cand.snr",
-                "cand.ra",
-                "cand.dec",
-                "cand.width",
-                "cand.observed_at",
-                "beam_id",
-            ],
-            maintain_order=True,
-            # Records are sorted by unix timestamp of candidate detection
-            keep="first",
-        )
+    candidate_df = candidate_df.sort(by="candidate").unique(
+        subset=[
+            "cand.dm",
+            "cand.snr",
+            "cand.ra",
+            "cand.dec",
+            "cand.width",
+            "cand.observed_at",
+            "beam_id",
+        ],
+        maintain_order=True,
+        # Records are sorted by unix timestamp of candidate detection
+        keep="first",
     )
 
     logger.info(
@@ -120,6 +117,7 @@ def transform_candidate(df: pl.DataFrame) -> pl.DataFrame:
                     row["cand.ra"],
                     row["cand.dec"],
                 ),
+                pl.List(pl.Float64),
             )
             .alias("ra_dec_degrees"),
         )
@@ -128,11 +126,9 @@ def transform_candidate(df: pl.DataFrame) -> pl.DataFrame:
             [
                 pl.col("ra_dec_degrees")
                 .list.get(0)
-                .cast(pl.Float64)
                 .alias("cand.ra"),
                 pl.col("ra_dec_degrees")
                 .list.get(1)
-                .cast(pl.Float64)
                 .alias("cand.dec"),
             ],
         )

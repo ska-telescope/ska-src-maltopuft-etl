@@ -349,15 +349,15 @@ def get_obs_df(
             get_em_min().alias("obs.em_min"),
             get_em_max().alias("obs.em_max"),
             pl.col("obs.pol_xel")
-            .map_elements(get_dataproduct_type, return_dtype=pl.Utf8)
+            .map_elements(get_dataproduct_type, pl.Utf8)
             .alias("obs.dataproduct_type"),
             pl.col("obs.pol_xel")
-            .map_elements(get_pol_states, return_dtype=pl.Utf8)
+            .map_elements(get_pol_states, pl.Utf8)
             .alias("obs.pol_states"),
             pl.col("obs.t_min")
             .map_elements(
                 lambda x: find_parent_interval(x, sb_df),
-                return_dtype=pl.Int64,
+                pl.Int64,
             )
             .alias("schedule_block_id"),
         )
@@ -445,17 +445,16 @@ def get_tiling_config_df(
                     row["tiling.ra"],
                     row["tiling.dec"],
                 ),
+                pl.List(pl.Float64),
             )
             .alias("ra_dec_degrees"),
         )
         .with_columns(
             pl.col("ra_dec_degrees")
             .list.get(0)
-            .cast(pl.Float64)
             .alias("tiling.ra"),
             pl.col("ra_dec_degrees")
             .list.get(1)
-            .cast(pl.Float64)
             .alias("tiling.dec"),
         )
         .drop("ra_dec_degrees")
@@ -532,17 +531,16 @@ def get_beam_df(df: pl.DataFrame) -> pl.DataFrame:
                     row["beam.ra"],
                     row["beam.dec"],
                 ),
+                pl.List(pl.Float64),
             )
             .alias("ra_dec_degrees"),
         )
         .with_columns(
             pl.col("ra_dec_degrees")
             .list.get(0)
-            .cast(pl.Float64)
             .alias("beam.ra"),
             pl.col("ra_dec_degrees")
             .list.get(1)
-            .cast(pl.Float64)
             .alias("beam.dec"),
         )
         .drop("ra_dec_degrees")

@@ -8,19 +8,14 @@ import polars as pl
 
 from ska_src_maltopuft_etl.core.config import config
 from ska_src_maltopuft_etl.core.database import engine
-from ska_src_maltopuft_etl.core.exceptions import DuplicateInsertError
 from ska_src_maltopuft_etl.database_loader import DatabaseLoader
 from ska_src_maltopuft_etl.meertrap.candidate.targets import candidate_targets
 from ska_src_maltopuft_etl.meertrap.observation.targets import (
     observation_targets,
 )
-from ska_src_maltopuft_etl.target_handler.target_handler import (
-    TargetDataFrameHandler,
-)
 
 from .candidate.extract import extract_spccl
 from .candidate.transform import transform_spccl
-from .load import bulk_insert_schedule_block, insert_observation_by_row
 from .observation.extract import extract_observation
 from .observation.transform import transform_observation
 
@@ -175,57 +170,41 @@ def transform(
 def load(
     obs_df: pl.DataFrame,
     cand_df: pl.DataFrame,
-) -> None:
-    """Load MeerTRAP data into a database.
-
-    Args:
-        obs_df (pd.DataFrame): DataFrame containing observation data.
-        cand_df (pd.DataFrame): DataFrame containing candidate data.
-
-    Raises:
-        RuntimeError: If there is an unrecoverable error while inserting data.
-
-    """
+) -> tuple[pl.DataFrame, pl.DataFrame]:
+    """Load MeerTRAP data into the database."""
     if len(obs_df) == 0 or len(cand_df) == 0:
-        return
+        logger.info("No data to load into the database.")
+        return None
 
-    try:
-        with engine.connect() as conn, conn.begin():
-            db = DatabaseLoader(conn=conn)
-            bulk_insert_schedule_block(
-                db=db,
-                obs_df=obs_df,
-                cand_df=cand_df,
-            )
-    except DuplicateInsertError as exc:
-        logger.warning(
-            "Failed to insert data, falling back to inserting observation "
-            f"rows. {exc}",
+    logger.info("Loading MeerTRAP data into the database")
+    with engine.connect() as conn, conn.begin():
+        db = DatabaseLoader(conn=conn)
+
+        for target in (
+            observation_targets.ScheduleBlock,
+            observation_targets.MeerkatScheduleBlock,
+            observation_targets.Host,
+            observation_targets.CoherentBeamConfig,
+            observation_targets.Observation,
+            observation_targets.TilingConfig,
+            observation_targets.Beam,
+        ):
+            obs_df = db.load_target_rows(target=target, df=obs_df)
+
+        # Update the candidate beam ids to match the beam ids in the database
+        beam_key_map = db.foreign_keys_map.get("beam_id")
+        cand_df = cand_df.with_columns(
+            pl.col("beam_id").map_elements(
+                lambda x: beam_key_map.get(x, x),
+                pl.Int32,
+            ),
         )
 
-        obs_handler = TargetDataFrameHandler(
-            df=obs_df,
-            targets=observation_targets,
-        )
-        cand_handler = TargetDataFrameHandler(
-            df=cand_df,
-            targets=candidate_targets,
-        )
+        for target in (
+            candidate_targets.Candidate,
+            candidate_targets.SPCandidate,
+        ):
+            cand_df = db.load_target_rows(target=target, df=cand_df)
 
-        unique_observations = obs_handler.unique_rows(
-            target=observation_targets[3],
-        )
-
-        with engine.connect() as conn:
-            for row in unique_observations.iter_rows(named=True):
-                with conn.begin():
-                    db = DatabaseLoader(conn=conn)
-                    insert_observation_by_row(
-                        obs_handler=obs_handler,
-                        cand_handler=cand_handler,
-                        obs_id=row["observation_id"],
-                        db=db,
-                    )
-                del db
-
-        logger.info("Successfully loaded candidate data")
+        logger.info("Data loaded successfully")
+        return obs_df, cand_df

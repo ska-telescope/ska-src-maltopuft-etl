@@ -57,6 +57,7 @@ def transform(df: pl.DataFrame) -> pl.DataFrame:
                         row["known_ps.ra"],
                         row["known_ps.dec"],
                     ),
+                    pl.List(pl.Float64),
                 )
                 .alias("ra_dec_degrees"),
             ],
@@ -65,11 +66,9 @@ def transform(df: pl.DataFrame) -> pl.DataFrame:
             [
                 pl.col("ra_dec_degrees")
                 .list.get(0)
-                .cast(pl.Float64)
                 .alias("known_ps.ra"),
                 pl.col("ra_dec_degrees")
                 .list.get(1)
-                .cast(pl.Float64)
                 .alias("known_ps.dec"),
             ],
         )
@@ -78,10 +77,7 @@ def transform(df: pl.DataFrame) -> pl.DataFrame:
             [
                 pl.concat_str(["known_ps.ra", "known_ps.dec"], separator=",")
                 .alias("known_ps.pos")
-                .map_elements(
-                    utils.add_parenthesis,
-                    return_dtype=pl.String,
-                ),
+                .map_elements(utils.add_parenthesis,pl.String),
                 # Catalogue columns
                 pl.lit("ATNF pulsar catalogue").alias("cat.name"),
                 pl.lit(ATNF_BASE_URL).alias("cat.url"),
