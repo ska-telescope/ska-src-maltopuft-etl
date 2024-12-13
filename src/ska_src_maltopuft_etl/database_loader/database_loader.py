@@ -8,6 +8,9 @@ import polars as pl
 import sqlalchemy as sa
 from ska_src_maltopuft_backend.core.types import ModelT
 
+from ska_src_maltopuft_etl.core.exceptions import (
+    DuplicateInsertError,
+)
 from ska_src_maltopuft_etl.core.insert import insert_
 from ska_src_maltopuft_etl.core.target import TargetInformation
 
@@ -158,7 +161,7 @@ class DatabaseLoader:
             target (TargetInformation): Target table information.
 
         Returns:
-            dict[int, int]: A map of dataframe to database primary keys.
+            dict[int, int]: Map of dataframe to database primary keys.
 
         """
         key_map = {}
@@ -181,10 +184,17 @@ class DatabaseLoader:
         self,
         target: TargetInformation,
         df: pl.DataFrame,
-    ) -> pl.DataFrame:
-        """Load target rows into the database."""
-        logger.info(f"Loading {target.table_name()} data into the database")
+    ) -> dict[int, int]:
+        """Load target rows into the database.
 
+        Args:
+            target: Dictionary containing target table metadata.
+            df: DataFrame containing transformed data.
+
+        Returns:
+            dict[int, int]: Map of dataframe to database primary keys.
+
+        """
         rows_df = self.prepare_data_for_insert(
             df=df.unique(target.primary_key),
             target=target,
@@ -194,12 +204,70 @@ class DatabaseLoader:
             df=rows_df,
             target=target,
         )
-
         self.foreign_keys_map[target.primary_key] = key_map
+        return self.foreign_keys_map[target.primary_key]
+
+    def bulk_load_target_rows(
+        self,
+        target: TargetInformation,
+        df: pl.DataFrame,
+    ) -> dict[int, int]:
+        """Insert a subset of DataFrame columns into a target database table.
+
+        Args:
+            target: Dictionary containing target table metadata.
+            df: DataFrame containing transformed data.
+
+        Returns:
+            dict[int, int]: Map of dataframe to database primary keys.
+
+        """
+        rows_df = self.prepare_data_for_insert(
+            df=df.unique(target.primary_key),
+            target=target,
+        )
+
+        with self.conn.begin_nested():
+            inserted_ids = insert_(
+                conn=self.conn,
+                model_class=target.model_class,
+                data=rows_df.to_dicts(),
+            )
+
+        self.foreign_keys_map[target.primary_key] = dict(
+            zip(rows_df[target.primary_key], inserted_ids, strict=False),
+        )
+
+        return self.foreign_keys_map[target.primary_key]
+
+    def load(
+        self,
+        target: TargetInformation,
+        df: pl.DataFrame,
+    ) -> pl.DataFrame:
+        """Load data from a DataFrame into a target database table.
+
+        Bulk inserts data into the target data. If an DupliacteInsertError
+        is raised, the data is inserted row-by-row.
+
+        Args:
+            target (TargetInformation): Target database table information.
+            df (pl.DataFrame): DataFrame containing data to insert.
+
+        Returns:
+            pl.DataFrame: DataFrame with updated primary keys.
+
+        """
+        try:
+            self.bulk_load_target_rows(target=target, df=df)
+        except DuplicateInsertError:
+            self.load_target_rows(target=target, df=df)
 
         return df.with_columns(
             pl.col(target.primary_key).map_elements(
-                lambda x: key_map.get(x, x),
+                lambda x: (
+                    self.foreign_keys_map.get(target.primary_key).get(x, x)
+                ),
                 pl.Int32,
             ),
         )

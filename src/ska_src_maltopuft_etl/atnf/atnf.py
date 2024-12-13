@@ -64,12 +64,8 @@ def transform(df: pl.DataFrame) -> pl.DataFrame:
         )
         .with_columns(
             [
-                pl.col("ra_dec_degrees")
-                .list.get(0)
-                .alias("known_ps.ra"),
-                pl.col("ra_dec_degrees")
-                .list.get(1)
-                .alias("known_ps.dec"),
+                pl.col("ra_dec_degrees").list.get(0).alias("known_ps.ra"),
+                pl.col("ra_dec_degrees").list.get(1).alias("known_ps.dec"),
             ],
         )
         .drop("ra_dec_degrees")
@@ -77,7 +73,7 @@ def transform(df: pl.DataFrame) -> pl.DataFrame:
             [
                 pl.concat_str(["known_ps.ra", "known_ps.dec"], separator=",")
                 .alias("known_ps.pos")
-                .map_elements(utils.add_parenthesis,pl.String),
+                .map_elements(utils.add_parenthesis, pl.String),
                 # Catalogue columns
                 pl.lit("ATNF pulsar catalogue").alias("cat.name"),
                 pl.lit(ATNF_BASE_URL).alias("cat.url"),
@@ -99,7 +95,8 @@ def load(df: pd.DataFrame) -> None:
     with engine.connect() as conn, conn.begin():
         db = DatabaseLoader(conn=conn)
         for target in targets:
-            df = db.insert_target(
-                df=df,
-                target=target,
-            )
+            df = db.load(target=target, df=df)
+
+    logger.info(
+        "Successfully loaded ATNF pulsar catalogue data into the database",
+    )

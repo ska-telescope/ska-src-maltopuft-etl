@@ -189,7 +189,7 @@ def load(
             observation_targets.TilingConfig,
             observation_targets.Beam,
         ):
-            obs_df = db.load_target_rows(target=target, df=obs_df)
+            obs_df = db.load(target=target, df=obs_df)
 
         # Update the candidate beam ids to match the beam ids in the database
         beam_key_map = db.foreign_keys_map.get("beam_id")
@@ -204,7 +204,7 @@ def load(
             candidate_targets.Candidate,
             candidate_targets.SPCandidate,
         ):
-            cand_df = db.load_target_rows(target=target, df=cand_df)
+            cand_df = db.load(target=target, df=cand_df)
 
         logger.info("Data loaded successfully")
         return obs_df, cand_df

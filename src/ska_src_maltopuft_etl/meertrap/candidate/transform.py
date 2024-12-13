@@ -124,12 +124,8 @@ def transform_candidate(df: pl.DataFrame) -> pl.DataFrame:
         .drop("cand.mjd")
         .with_columns(
             [
-                pl.col("ra_dec_degrees")
-                .list.get(0)
-                .alias("cand.ra"),
-                pl.col("ra_dec_degrees")
-                .list.get(1)
-                .alias("cand.dec"),
+                pl.col("ra_dec_degrees").list.get(0).alias("cand.ra"),
+                pl.col("ra_dec_degrees").list.get(1).alias("cand.dec"),
             ],
         )
         .drop("ra_dec_degrees")

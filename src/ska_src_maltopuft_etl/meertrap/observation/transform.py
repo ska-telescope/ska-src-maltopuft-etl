@@ -450,12 +450,8 @@ def get_tiling_config_df(
             .alias("ra_dec_degrees"),
         )
         .with_columns(
-            pl.col("ra_dec_degrees")
-            .list.get(0)
-            .alias("tiling.ra"),
-            pl.col("ra_dec_degrees")
-            .list.get(1)
-            .alias("tiling.dec"),
+            pl.col("ra_dec_degrees").list.get(0).alias("tiling.ra"),
+            pl.col("ra_dec_degrees").list.get(1).alias("tiling.dec"),
         )
         .drop("ra_dec_degrees")
         .with_columns(
@@ -536,12 +532,8 @@ def get_beam_df(df: pl.DataFrame) -> pl.DataFrame:
             .alias("ra_dec_degrees"),
         )
         .with_columns(
-            pl.col("ra_dec_degrees")
-            .list.get(0)
-            .alias("beam.ra"),
-            pl.col("ra_dec_degrees")
-            .list.get(1)
-            .alias("beam.dec"),
+            pl.col("ra_dec_degrees").list.get(0).alias("beam.ra"),
+            pl.col("ra_dec_degrees").list.get(1).alias("beam.dec"),
         )
         .drop("ra_dec_degrees")
         .unique(
