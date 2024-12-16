@@ -11,18 +11,18 @@ from ska_src_maltopuft_etl.core.target import TargetInformation
 class CandidateTargets:
     """MALTOPUFTDB candidate targets."""
 
-    Candidate: TargetInformation
-    SPCandidate: TargetInformation
+    candidate: TargetInformation
+    sp_candidate: TargetInformation
 
 
 candidate_targets = CandidateTargets(
-    Candidate=TargetInformation(
+    candidate=TargetInformation(
         model_class=models.Candidate,
         table_prefix="cand.",
         primary_key="candidate_id",
         foreign_keys=["beam_id"],
     ),
-    SPCandidate=TargetInformation(
+    sp_candidate=TargetInformation(
         model_class=models.SPCandidate,
         table_prefix="sp_cand.",
         primary_key="sp_candidate_id",

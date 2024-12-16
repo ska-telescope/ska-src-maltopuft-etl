@@ -170,7 +170,7 @@ def transform(
 def load(
     obs_df: pl.DataFrame,
     cand_df: pl.DataFrame,
-) -> tuple[pl.DataFrame, pl.DataFrame]:
+) -> tuple[pl.DataFrame, pl.DataFrame] | None:
     """Load MeerTRAP data into the database."""
     if len(obs_df) == 0 or len(cand_df) == 0:
         logger.info("No data to load into the database.")
@@ -181,18 +181,18 @@ def load(
         db = DatabaseLoader(conn=conn)
 
         for target in (
-            observation_targets.ScheduleBlock,
-            observation_targets.MeerkatScheduleBlock,
-            observation_targets.Host,
-            observation_targets.CoherentBeamConfig,
-            observation_targets.Observation,
-            observation_targets.TilingConfig,
-            observation_targets.Beam,
+            observation_targets.schedule_block,
+            observation_targets.meerkat_schedule_block,
+            observation_targets.host,
+            observation_targets.coherent_beam_config,
+            observation_targets.observation,
+            observation_targets.tiling_config,
+            observation_targets.beam,
         ):
             obs_df = db.load(target=target, df=obs_df)
 
         # Update the candidate beam ids to match the beam ids in the database
-        beam_key_map = db.foreign_keys_map.get("beam_id")
+        beam_key_map = db.foreign_keys_map.get("beam_id", {})
         cand_df = cand_df.with_columns(
             pl.col("beam_id").map_elements(
                 lambda x: beam_key_map.get(x, x),
@@ -201,8 +201,8 @@ def load(
         )
 
         for target in (
-            candidate_targets.Candidate,
-            candidate_targets.SPCandidate,
+            candidate_targets.candidate,
+            candidate_targets.sp_candidate,
         ):
             cand_df = db.load(target=target, df=cand_df)
 

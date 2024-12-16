@@ -3,7 +3,6 @@
 import datetime as dt
 import logging
 
-import pandas as pd
 import polars as pl
 from psrqpy import ATNF_BASE_URL, QueryATNF
 
@@ -85,7 +84,7 @@ def transform(df: pl.DataFrame) -> pl.DataFrame:
     )
 
 
-def load(df: pd.DataFrame) -> None:
+def load(df: pl.DataFrame) -> None:
     """Load ATNF pulsar catalogue data into the database.
 
     Args:

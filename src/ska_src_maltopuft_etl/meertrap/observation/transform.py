@@ -3,7 +3,6 @@
 import ast
 import datetime as dt
 
-import pandas as pd
 import polars as pl
 
 from ska_src_maltopuft_etl import utils
@@ -147,8 +146,8 @@ def get_sb_df(df: pl.DataFrame) -> pl.DataFrame:
     """Returns a dataframe with unique schedule block rows."""
 
     def handle_zero_durations(sb_df: pl.DataFrame) -> pl.DataFrame:
-        """Handles rows with zero durations by extracting duration from schedule
-        block configuration script.
+        """Handles rows with zero durations by extracting duration from
+        schedule block configuration script.
         """
         # Extract durations from script_profile_config
         summed_durations = sb_df.select(
@@ -242,7 +241,7 @@ def get_coherent_beam_config_df(df: pl.DataFrame) -> pl.DataFrame:
 
 def find_parent_interval(
     child_time: dt.datetime,
-    parent_df: pd.DataFrame,
+    parent_df: pl.DataFrame,
 ) -> int | None:
     """Returns the schedule_block_id where child_time is in the interval
     `start_time` <= t <= `est_end_time + 1 hour`.
@@ -301,8 +300,8 @@ def get_obs_df(
         )
 
     def get_pol_states(npol: int) -> str | None:
-        """Returns a string of comma separated polarisation states for the given
-        number of polarisations.
+        """Returns a string of comma separated polarisation states for the
+        given number of polarisations.
 
         Args:
             npol (int): The number of polarisations.
@@ -420,7 +419,10 @@ def get_tiling_config_df(
     tiling_df = (
         tiling_df.join(
             pl.json_normalize(
-                tiling_df.get_column("beams.tilings").to_numpy(),
+                tiling_df.get_column(
+                    #  type: ignore[arg-type]
+                    "beams.tilings",
+                ),
             ).with_row_index(),
             on="index",
             how="outer",

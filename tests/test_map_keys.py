@@ -1,3 +1,5 @@
+# ruff: noqa: D100, D103, ANN201
+
 import polars as pl
 from polars.testing import assert_series_equal
 
@@ -44,7 +46,6 @@ def test_map_keys_handles_dup_values():
         pl.col("original")
         .map_elements(
             lambda x: mapping.get(x, x),
-            pl.Int32,
         )
         .alias("mapped"),
     )

@@ -1,16 +1,13 @@
 """Loads transformed data into MALTOPUFTDB."""
 
 import logging
-from collections.abc import Hashable
 from typing import Any
 
 import polars as pl
 import sqlalchemy as sa
 from ska_src_maltopuft_backend.core.types import ModelT
 
-from ska_src_maltopuft_etl.core.exceptions import (
-    DuplicateInsertError,
-)
+from ska_src_maltopuft_etl.core.exceptions import DuplicateInsertError
 from ska_src_maltopuft_etl.core.insert import insert_
 from ska_src_maltopuft_etl.core.target import TargetInformation
 
@@ -76,7 +73,7 @@ class DatabaseLoader:
 
     def insert_row(
         self,
-        data: dict[Hashable, Any],
+        data: dict[str, Any],
         target: TargetInformation,
         *,
         transactional: bool,
@@ -266,7 +263,7 @@ class DatabaseLoader:
         return df.with_columns(
             pl.col(target.primary_key).map_elements(
                 lambda x: (
-                    self.foreign_keys_map.get(target.primary_key).get(x, x)
+                    self.foreign_keys_map.get(target.primary_key, {}).get(x, x)
                 ),
                 pl.Int32,
             ),
