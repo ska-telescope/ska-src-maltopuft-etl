@@ -4,24 +4,18 @@ import logging
 from pathlib import Path
 from typing import Any
 
-import pandas as pd
 import polars as pl
 
 from ska_src_maltopuft_etl.core.config import config
 from ska_src_maltopuft_etl.core.database import engine
-from ska_src_maltopuft_etl.core.exceptions import DuplicateInsertError
 from ska_src_maltopuft_etl.database_loader import DatabaseLoader
 from ska_src_maltopuft_etl.meertrap.candidate.targets import candidate_targets
 from ska_src_maltopuft_etl.meertrap.observation.targets import (
     observation_targets,
 )
-from ska_src_maltopuft_etl.target_handler.target_handler import (
-    TargetDataFrameHandler,
-)
 
 from .candidate.extract import extract_spccl
 from .candidate.transform import transform_spccl
-from .load import bulk_insert_schedule_block, insert_observation_by_row
 from .observation.extract import extract_observation
 from .observation.transform import transform_observation
 
@@ -113,6 +107,14 @@ def extract(
         rows.append(parse_candidate_dir(candidate_dir=candidate_dir))
 
     cand_df = cand_df.vstack(pl.DataFrame(rows))
+
+    # Because utc_stop is often null the utc_stop column in the DataFrame
+    # is likely to be naive timezone so we explictly set it to UTC.
+    if cand_df.get_column("utc_stop").dtype == pl.Datetime:
+        cand_df = cand_df.with_columns(
+            pl.col("utc_stop").dt.replace_time_zone("UTC"),
+        )
+
     logger.info("Extract routine completed successfully")
     return cand_df
 
@@ -139,10 +141,11 @@ def transform(
     if len(df) == 0:
         return pl.DataFrame(), pl.DataFrame()
 
-    obs_pd = transform_observation(df=df)
-    obs_df: pl.DataFrame = pl.from_pandas(obs_pd)
+    obs_df = transform_observation(df=df)
 
-    partition_key += "_"
+    if partition_key != "":
+        partition_key += "_"
+
     obs_df_parquet_path = output_path / f"{partition_key}obs_df.parquet"
     logger.info(
         f"Writing transformed observation data to {obs_df_parquet_path}",
@@ -153,7 +156,7 @@ def transform(
         f"{obs_df_parquet_path}",
     )
 
-    cand_df = transform_spccl(df=df, obs_df=obs_df)
+    cand_df = transform_spccl(df=obs_df)
     cand_df_parquet_path = output_path / f"{partition_key}cand_df.parquet"
     logger.info(f"Writing transformed cand data to {cand_df_parquet_path}")
     cand_df.write_parquet(cand_df_parquet_path)
@@ -165,58 +168,43 @@ def transform(
 
 
 def load(
-    obs_df: pd.DataFrame,
-    cand_df: pd.DataFrame,
-) -> None:
-    """Load MeerTRAP data into a database.
-
-    Args:
-        obs_df (pd.DataFrame): DataFrame containing observation data.
-        cand_df (pd.DataFrame): DataFrame containing candidate data.
-
-    Raises:
-        RuntimeError: If there is an unrecoverable error while inserting data.
-
-    """
+    obs_df: pl.DataFrame,
+    cand_df: pl.DataFrame,
+) -> tuple[pl.DataFrame, pl.DataFrame] | None:
+    """Load MeerTRAP data into the database."""
     if len(obs_df) == 0 or len(cand_df) == 0:
-        return
+        logger.info("No data to load into the database.")
+        return None
 
-    try:
-        with engine.connect() as conn, conn.begin():
-            db = DatabaseLoader(conn=conn)
-            bulk_insert_schedule_block(
-                db=db,
-                obs_df=obs_df,
-                cand_df=cand_df,
-            )
-    except DuplicateInsertError as exc:
-        logger.warning(
-            "Failed to insert data, falling back to inserting observation "
-            f"rows. {exc}",
+    logger.info("Loading MeerTRAP data into the database")
+    with engine.connect() as conn, conn.begin():
+        db = DatabaseLoader(conn=conn)
+
+        for target in (
+            observation_targets.schedule_block,
+            observation_targets.meerkat_schedule_block,
+            observation_targets.host,
+            observation_targets.coherent_beam_config,
+            observation_targets.observation,
+            observation_targets.tiling_config,
+            observation_targets.beam,
+        ):
+            obs_df = db.load(target=target, df=obs_df)
+
+        # Update the candidate beam ids to match the beam ids in the database
+        beam_key_map = db.foreign_keys_map.get("beam_id", {})
+        cand_df = cand_df.with_columns(
+            pl.col("beam_id").map_elements(
+                lambda x: beam_key_map.get(x, x),
+                pl.Int32,
+            ),
         )
 
-        obs_handler = TargetDataFrameHandler(
-            df=obs_df,
-            targets=observation_targets,
-        )
-        cand_handler = TargetDataFrameHandler(
-            df=cand_df,
-            targets=candidate_targets,
-        )
+        for target in (
+            candidate_targets.candidate,
+            candidate_targets.sp_candidate,
+        ):
+            cand_df = db.load(target=target, df=cand_df)
 
-        unique_observations = obs_handler.unique_rows(
-            target=observation_targets[3],
-        )
-
-        with engine.connect() as conn:
-            for obs_idx in unique_observations.index:
-                obs_id = unique_observations.loc[obs_idx]["observation_id"]
-
-                with conn.begin():
-                    db = DatabaseLoader(conn=conn)
-                    insert_observation_by_row(
-                        obs_handler,
-                        cand_handler,
-                        obs_id,
-                        db,
-                    )
+        logger.info("Data loaded successfully")
+        return obs_df, cand_df

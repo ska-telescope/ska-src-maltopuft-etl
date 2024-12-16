@@ -47,8 +47,8 @@ def main() -> None:
         obs_df, cand_df = transform(df=raw_df)
 
     load(
-        obs_df=obs_df.to_pandas(),
-        cand_df=cand_df.to_pandas(),
+        obs_df=obs_df,
+        cand_df=cand_df,
     )
 
 

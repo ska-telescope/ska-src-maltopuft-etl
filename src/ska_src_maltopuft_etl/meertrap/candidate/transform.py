@@ -12,9 +12,9 @@ from ska_src_maltopuft_etl.core.exceptions import UnexpectedShapeError
 logger = logging.getLogger(__name__)
 
 
-def transform_spccl(df: pl.DataFrame, obs_df: pl.DataFrame) -> pl.DataFrame:
+def transform_spccl(df: pl.DataFrame) -> pl.DataFrame:
     """MeerTRAP candidate transformation entrypoint."""
-    candidate_df = transform_candidate(df=df, obs_df=obs_df)
+    candidate_df = transform_candidate(df=df)
     candidate_df = transform_sp_candidate(candidate_df=candidate_df)
 
     # Deduplicate candidates
@@ -41,6 +41,7 @@ def transform_spccl(df: pl.DataFrame, obs_df: pl.DataFrame) -> pl.DataFrame:
         f"Successfully removed {initial_cand_num-len(candidate_df)} "
         f"duplicate candidates. {len(candidate_df)} records remaining",
     )
+
     return candidate_df
 
 
@@ -60,10 +61,7 @@ def mjd_2_datetime(mjd: float) -> dt.datetime:
     )
 
 
-def transform_candidate(
-    df: pl.DataFrame,
-    obs_df: pl.DataFrame,
-) -> pl.DataFrame:
+def transform_candidate(df: pl.DataFrame) -> pl.DataFrame:
     """Returns a dataframe whose rows contain unique Candidate model data.
 
     Args:
@@ -75,14 +73,23 @@ def transform_candidate(
 
     """
     logger.info("Joining beam and candidate data")
-
     n_cand = df.select("candidate").n_unique()
+
     cand_df = (
-        df.lazy()
-        .join(obs_df.lazy(), on=["candidate"], how="inner", coalesce=False)
-        .unique(subset=["candidate", "beam", "beam.number"])
-        .filter(pl.col("beam") == pl.col("beam.number"))
-    ).collect(streaming=True)
+        df.select(
+            "candidate",
+            "beam.number",
+            "beam_id",
+            *[
+                col
+                for col in df.columns
+                if col.startswith(("cand.", "sp_cand."))
+            ],
+        )
+        .unique(subset=["candidate", "cand.beam", "beam.number"])
+        .filter(pl.col("cand.beam") == pl.col("beam.number"))
+        .drop("beam.number", "cand.beam")
+    )
 
     if len(cand_df) != n_cand:
         msg = (
@@ -97,59 +104,36 @@ def transform_candidate(
     )
     logger.info("Transforming candidate data")
 
-    cand_df = cand_df.rename(
-        {
-            "dm": "cand.dm",
-            "snr": "cand.snr",
-            "ra": "cand.ra",
-            "dec": "cand.dec",
-            "width": "cand.width",
-        },
-    )
-
-    cand_df = cand_df.with_columns(
-        pl.col("mjd")
-        .map_elements(mjd_2_datetime, pl.Datetime)
-        .dt.replace_time_zone("UTC")
-        .alias("cand.observed_at"),
-    ).drop("mjd")
-
     cand_df = (
-        cand_df.with_columns(
-            [
-                pl.struct(["cand.ra", "cand.dec"])
-                .map_elements(
-                    lambda row: utils.hms_to_degrees(
-                        row["cand.ra"],
-                        row["cand.dec"],
-                    ),
-                )
-                .alias("ra_dec_degrees"),
-            ],
+        cand_df.with_row_index(name="candidate_id", offset=1)
+        .with_columns(
+            pl.col("cand.mjd")
+            .map_elements(mjd_2_datetime, pl.Datetime)
+            .dt.replace_time_zone("UTC")
+            .alias("cand.observed_at"),
+            pl.struct(["cand.ra", "cand.dec"])
+            .map_elements(
+                lambda row: utils.hms_to_degrees(
+                    row["cand.ra"],
+                    row["cand.dec"],
+                ),
+                pl.List(pl.Float64),
+            )
+            .alias("ra_dec_degrees"),
         )
+        .drop("cand.mjd")
         .with_columns(
             [
-                pl.col("ra_dec_degrees")
-                .list.get(0)
-                .cast(pl.Float64)
-                .alias("cand.ra"),
-                pl.col("ra_dec_degrees")
-                .list.get(1)
-                .cast(pl.Float64)
-                .alias("cand.dec"),
+                pl.col("ra_dec_degrees").list.get(0).alias("cand.ra"),
+                pl.col("ra_dec_degrees").list.get(1).alias("cand.dec"),
             ],
         )
         .drop("ra_dec_degrees")
-    )
-
-    # Add cand.pos=(ra,dec) for querying with pgSphere
-    cand_df = cand_df.with_columns(
+    ).with_columns(
         pl.concat_str(["cand.ra", "cand.dec"], separator=",")
         .alias("cand.pos")
         .map_elements(utils.add_parenthesis, pl.String),
     )
-
-    cand_df = cand_df.with_row_index(name="candidate_id", offset=1)
 
     logger.info("Successfully transformed candidate data.")
     return cand_df
@@ -166,9 +150,4 @@ def transform_sp_candidate(candidate_df: pl.DataFrame) -> pl.DataFrame:
         pl.DataFrame: Unique SPCandidate model data.
 
     """
-    sp_df = candidate_df.with_row_index(name="sp_candidate_id", offset=1)
-    return sp_df.rename(
-        {
-            "plot_file": "sp_cand.plot_path",
-        },
-    )
+    return candidate_df.with_row_index(name="sp_candidate_id", offset=1)

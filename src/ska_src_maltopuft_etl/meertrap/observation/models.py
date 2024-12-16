@@ -340,6 +340,15 @@ class MeertrapRunSummary(BaseModel):
             tzinfo=dt.timezone.utc,  # noqa: UP017
         )
 
+    @field_validator("utc_stop", mode="before")
+    def str_or_null2datetime(cls, value: str | None) -> dt.datetime | None:
+        """Serialises the `utc_stop` string to a `datetime` instance."""
+        if value is None:
+            return None
+        return dt.datetime.strptime(value, "%Y-%m-%d_%H:%M:%S").replace(
+            tzinfo=dt.timezone.utc,  # noqa: UP017
+        )
+
     @field_serializer("search_pipeline", when_used="always")
     def serialize_search_pipeline_to_str(self, search_pipeline: dict) -> str:
         """Serialises the search pipeline dictionary to a string.

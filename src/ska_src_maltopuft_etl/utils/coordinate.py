@@ -34,8 +34,6 @@ def hms_to_degrees(ra: str, dec: str) -> tuple[float, float]:
     Decimal degrees are rounded to 5 decimal places to allow
     querying to the nearest arcsecond (1/3600).
     """
-    ra = ra.replace(" ", "")
-    dec = dec.replace(" ", "")
     c = SkyCoord(
         # pylint: disable=E1101
         ra=ra,
