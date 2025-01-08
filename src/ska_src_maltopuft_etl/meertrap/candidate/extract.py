@@ -4,10 +4,13 @@ import logging
 from pathlib import Path
 from typing import Any
 
+import polars as pl
+
 from .models import MeertrapSpccl
 
 logger = logging.getLogger(__name__)
 
+# TODO: Find a better place for this
 SPCCL_COLUMNS = (
     "mjd",
     "dm",
@@ -36,6 +39,7 @@ def read_csv(filename: Path) -> list[str]:
 
 def read_spccl(filename: Path) -> dict[str, Any]:
     """Extract candidate data from an .spccl (tsv) file."""
+    # TODO: Improve readability
     lines = read_csv(filename=filename)
     if len(lines) != 1:
         msg = f"Expected 1 candidate in file {filename}, found {len(lines)}"
@@ -57,15 +61,34 @@ def read_spccl(filename: Path) -> dict[str, Any]:
     return dict(zip(SPCCL_COLUMNS, values, strict=False))
 
 
-def extract_spccl(filename: Path) -> dict[str, Any]:
-    """Extracts candidate data from a MeerTRAP .spccl file.
+def parse_spccl(filename: Path) -> dict[str, Any]:
+    """Parses candidate data from a MeerTRAP .spccl file.
 
     :param filename:  The absolute path to the spccl file.
     """
-    candidate = filename.parent.parts[-1]
+    candidate_directory = filename.parent.parts[-1]
     data = MeertrapSpccl(
         **read_spccl(filename=filename),
-        candidate=candidate,
-        filename=f"{candidate}/{filename.stem}",
+        filename=f"{candidate_directory}/{filename.stem}",
     )
     return data.model_dump()
+
+
+def parse_candidates(directory: Path) -> pl.DataFrame:
+    """Parse MeerTRAP single pulse candidate files in nested directories.
+
+    Args:
+        directory (Path): Parent directory to parse.
+
+    Returns:
+        pl.DataFrame: Parsed MeerTRAP candidate data.
+
+    """
+    # TODO: Refactor
+    # TODO: Async
+    parsed_data = []
+    for idx, file in enumerate(directory.rglob("*spccl*")):
+        if idx % 1000 == 0:
+            logger.info(f"Parsing SPCCL #{idx}")
+        parsed_data.append(parse_spccl(filename=file))
+    return pl.DataFrame(parsed_data)

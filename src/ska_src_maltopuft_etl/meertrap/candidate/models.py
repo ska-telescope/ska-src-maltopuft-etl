@@ -6,10 +6,6 @@ from pydantic import BaseModel, Field
 class MeertrapSpccl(BaseModel):
     """The MeerTRAP candidate data model."""
 
-    candidate: str = Field(
-        ...,
-        description="The name of the candidate data archive.",
-    )
     filename: str = Field(..., description="The spccl filename.")
     mjd: float = Field(
         ...,

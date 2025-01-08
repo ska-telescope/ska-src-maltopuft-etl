@@ -292,10 +292,6 @@ class ScheduleBlockData(BaseModel):
 class MeertrapRunSummary(BaseModel):
     """The MeerTRAP run summary data model."""
 
-    candidate: str = Field(
-        ...,
-        description="The name of the candidate data archive.",
-    )
     filename: str = Field(..., description="The run summary filename.")
     beams: BeamConfig = Field(..., description="The beam configuration.")
     observation: ObservationData = Field(

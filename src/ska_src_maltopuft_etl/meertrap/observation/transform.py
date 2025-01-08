@@ -10,9 +10,8 @@ from ska_src_maltopuft_etl.core.exceptions import UnexpectedShapeError
 
 from .constants import MHZ_TO_HZ, SPEED_OF_LIGHT_M_PER_S
 
-FILE_TO_DF_COLUMNS = {
+RUN_SUMMARY_FILE_TO_DF_COLUMNS = {
     "filename": "filename",
-    "candidate": "candidate",
     "beams.ca_target_request.beams": "beams.beams",
     "beams.ca_target_request.tilings": "beams.tilings",
     "beams.coherent_beam_shape.angle": "cb.angle",
@@ -35,27 +34,17 @@ FILE_TO_DF_COLUMNS = {
     "sb.targets": "sb.targets",
     "utc_start": "obs.t_min",
     "utc_stop": "obs.t_max",
-    "mjd": "cand.mjd",
-    "dm": "cand.dm",
-    "width": "cand.width",
-    "snr": "cand.snr",
-    "beam": "cand.beam",
-    "ra": "cand.ra",
-    "dec": "cand.dec",
-    "plot_file": "sp_cand.plot_path",
 }
 
 
 def get_base_df(df: pl.DataFrame) -> pl.DataFrame:
     """Initialise the transformed DataFrame."""
     return df.select(
-        "candidate",
         "filename",
         "sb.start_at",
         "obs.t_min",
         "obs.t_max",
         "beams.host_beams",
-        *[col for col in df.columns if col.startswith(("cand.", "sp_cand."))],
     )
 
 
@@ -63,7 +52,7 @@ def transform_observation(
     df: pl.DataFrame,
 ) -> pl.DataFrame:
     """MeerTRAP observation transformation entrypoint."""
-    df_in = df.rename(FILE_TO_DF_COLUMNS).sort(
+    df_in = df.rename(RUN_SUMMARY_FILE_TO_DF_COLUMNS).sort(
         ["obs.t_min", "obs.t_max"],
         nulls_last=True,
     )
@@ -111,7 +100,6 @@ def transform_observation(
             "beams.host_beams_right",
             "obs.t_max_right",
             "schedule_block_id_right",
-            "candidate_right",
         )
     )
 
@@ -162,12 +150,10 @@ def get_sb_df(df: pl.DataFrame) -> pl.DataFrame:
 
         # Return summed durations if expected_duration_seconds is zero
         return sb_df.with_columns(
-            [
-                pl.when(pl.col("sb.expected_duration_seconds") == 0)
-                .then(summed_durations["sb.duration"])
-                .otherwise(pl.col("sb.expected_duration_seconds"))
-                .alias("sb.expected_duration_seconds"),
-            ],
+            pl.when(pl.col("sb.expected_duration_seconds") == 0)
+            .then(summed_durations["sb.duration"])
+            .otherwise(pl.col("sb.expected_duration_seconds"))
+            .alias("sb.expected_duration_seconds"),
         )
 
     sb_df = df.select(
@@ -337,7 +323,6 @@ def get_obs_df(
 
     obs_df = (
         df.select(
-            "candidate",
             "sb.est_end_at",
             "beams.host_beams",
             *[col for col in df.columns if col.startswith("obs.")],
