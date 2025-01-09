@@ -8,25 +8,9 @@ from typing import Any
 import polars as pl
 from tqdm import tqdm
 
-from .models import MeertrapSpccl
+from .models import SPCCL_FILE_TO_DF_COLUMN_MAP, MeertrapSpccl
 
 logger = logging.getLogger(__name__)
-
-# TODO: Find a better place for this
-SPCCL_COLUMNS = (
-    "mjd",
-    "dm",
-    "width",
-    "snr",
-    "beam",
-    "beam_mode",
-    "ra",
-    "dec",
-    "label",
-    "probability",
-    "fil_file",
-    "plot_file",
-)
 
 
 def read_csv(filename: Path) -> list[str]:
@@ -40,16 +24,33 @@ def read_csv(filename: Path) -> list[str]:
 
 
 def read_spccl(filename: Path) -> dict[str, Any]:
-    """Extract candidate data from an .spccl (tsv) file."""
-    # TODO: Improve readability
+    """Extract candidate data from an .spccl (tsv) file.
+
+    Args:
+        filename (Path): SPCCL file path.
+
+    Raises:
+        ValueError: If the file contains more than one candidate.
+
+    Returns:
+        dict[str, Any]: Dictionary containing SPCCL data.
+
+    """
     lines = read_csv(filename=filename)
+
     if len(lines) != 1:
         msg = f"Expected 1 candidate in file {filename}, found {len(lines)}"
         raise ValueError(msg)
+
     # Convert tsv to csv
-    line = lines[0].replace("\t", ",")
-    # Remove newline char
-    line = line.rstrip()
+    line = (
+        lines[0]
+        # Replace tab delimiter with ,
+        .replace("\t", ",")
+        # Remove newline char
+        .rstrip()
+    )
+
     # Get list of each comma separated value (dropping index at element 0)
     split_line = line.split(",")[1:]
 
@@ -60,7 +61,7 @@ def read_spccl(filename: Path) -> dict[str, Any]:
         for val in split_line
     ]
 
-    return dict(zip(SPCCL_COLUMNS, values, strict=False))
+    return dict(zip(SPCCL_FILE_TO_DF_COLUMN_MAP.keys(), values, strict=False))
 
 
 def parse_spccl(filename: Path) -> dict[str, Any]:

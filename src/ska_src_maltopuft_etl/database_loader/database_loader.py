@@ -125,6 +125,9 @@ class DatabaseLoader:
         )
         stmt = sa.select(target.model_class)
         for k, v in attributes.items():
+            if not hasattr(target.model_class, k):
+                continue
+
             stmt = stmt.where(getattr(target.model_class, k) == v)
 
         logger.debug(stmt)

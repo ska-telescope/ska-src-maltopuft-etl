@@ -78,3 +78,19 @@ class MeertrapSpccl(BaseModel):
         ...,
         description="The name of the candidate diagnostic subplot file.",
     )
+
+
+SPCCL_FILE_TO_DF_COLUMN_MAP = {
+    "mjd": "cand.mjd",
+    "dm": "cand.dm",
+    "width": "cand.width",
+    "snr": "cand.snr",
+    "beam": "cand.beam",
+    "beam_mode": "cand.beam_mode",
+    "ra": "cand.ra",
+    "dec": "cand.dec",
+    "label": "cand.label",
+    "probability": "cand.probability",
+    "fil_file": "cand.fil_file",
+    "plot_file": "sp_cand.plot_path",
+}

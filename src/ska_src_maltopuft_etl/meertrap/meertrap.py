@@ -1,7 +1,17 @@
-"""Meertrap ETL entrypoint."""
+"""Meertrap ETL entrypoint.
+
+This module provides the ETL (Extract, Transform, Load) process for the
+MeerTRAP project. It includes functions to parse, transform, and load
+single pulse candidate data and observation metadata into the MALTOPUFT
+database schema.
+"""
 
 import logging
+import os
+from collections.abc import Callable
+from functools import partial
 from pathlib import Path
+from typing import Any
 
 import polars as pl
 
@@ -21,96 +31,131 @@ from .observation.transform import transform_observation
 logger = logging.getLogger(__name__)
 
 
-def parse(
-    directory: Path = config.get("data_path", Path()),
-) -> tuple[pl.DataFrame, pl.DataFrame]:
-    """Parse MeerTRAP single pulse candidate data files in nested directories.
+def read_or_parse_parquet(
+    file_path: Path,
+    parse_func: Callable,
+    **kwargs: dict[str, Any],
+) -> pl.DataFrame:
+    """Reads a parquet file from the given path if it exists, otherwise
+    reparses.
+
+    Reparsed files are optionally written to disk if
+    Config.save_output = True.
 
     Args:
-        directory (Path, optional): The parent directory.
-        Defaults to config.get("data_path", Path()).
+        file_path (Path): Path to the parquet file to read or, if the file
+        doesn't exist, to save the parsed output to.
+        parse_func (Callable): Function to parse the file with if it doesn't
+        exist.
+        kwargs (dict[str, Any]): Key word arguments passed to parse_func.
 
     Returns:
+        pl.DataFrame: DataFrame containing the read or parsed Parquet file
+        data.
+
+    """
+    try:
+        logger.info(f"Reading data from {file_path}")
+        df = pl.read_parquet(file_path)
+        logger.info(f"Successfully read data from {file_path}")
+    except FileNotFoundError:
+        logger.info(f"No parsed data found at {file_path}, recomputing.")
+        df = parse_func(**kwargs)
+        if config.save_output:
+            df.write_parquet(file_path)
+            logger.info(f"Saved output to {file_path}")
+
+    return df
+
+
+def parse() -> tuple[pl.DataFrame, pl.DataFrame]:
+    """Parse MeerTRAP single pulse candidate data files in nested directories.
+
+    Returns
         tuple[pl.DataFrame, pl.DataFrame]: Parsed observation and candidate
         data, respectively.
 
     """
-    # Number of candidates can be very large, so only calculate it once
-    n_cand = sum(1 for x in directory.rglob("*") if x.is_dir())
-    obs_df = parse_observations(directory=directory, n_file=n_cand)
-    cand_df = parse_candidates(directory=directory, n_file=n_cand)
-    return obs_df, cand_df
+    n_cand = sum(1 for entry in os.scandir(config.data_path) if entry.is_dir())
+
+    parsed_obs_partial = partial(
+        read_or_parse_parquet,
+        file_path=config.raw_obs_data_path,
+        parse_func=parse_observations,
+        directory=config.data_path,
+        n_file=n_cand,
+    )
+
+    parsed_cand_partial = partial(
+        read_or_parse_parquet,
+        file_path=config.raw_cand_data_path,
+        parse_func=parse_candidates,
+        directory=config.data_path,
+        n_file=n_cand,
+    )
+
+    return parsed_obs_partial(), parsed_cand_partial()
 
 
 def transform(
     obs_df: pl.DataFrame,
     cand_df: pl.DataFrame,
-    output_path: Path = config.get("output_path", Path()),
-    partition_key: str = "",
 ) -> tuple[pl.DataFrame, pl.DataFrame]:
     """Transform MeerTRAP data to MALTOPUFT DB schema.
 
     Args:
-        obs_df (pl.DataFrame): Observation metadata.
-        cand_df (pl.DataFrame): Candidate data.
-        output_path (Path, optional): Path to write transformed data
-        to.
-        partition_key (str, optional): Partition key to include in output
-        files.
+        obs_df (pl.DataFrame): DataFrame containing observation metadata.
+        cand_df (pl.DataFrame): DataFrame containing candidate data.
 
     Returns:
         tuple[pl.DataFrame, pl.DataFrame]: Transformed observation and
         candidate data, respectively.
 
     """
-    num_obs = len(obs_df)
-    num_cand = len(cand_df)
+    if not (len(obs_df) > 0 and len(cand_df) > 0):
+        logger.info("No parsed data to transform, early stopping.")
+        return obs_df, cand_df
 
-    if num_obs == 0 and num_cand == 0:
-        # TODO: Check for all the early stop conditions here
-        # TODO: Split into function
-        return pl.DataFrame(), pl.DataFrame()
+    transformed_obs_df_partial = partial(
+        read_or_parse_parquet,
+        file_path=config.transformed_obs_data_path,
+        parse_func=transform_observation,
+        df=obs_df,
+    )
 
-    if partition_key != "":
-        partition_key += "_"
+    obs_df = transformed_obs_df_partial()
 
-    obs_df = transform_observation(df=obs_df)
+    transformed_cand_df_partial = partial(
+        read_or_parse_parquet,
+        file_path=config.transformed_cand_data_path,
+        parse_func=transform_spccl,
+        cand_df=cand_df,
+        obs_df=obs_df,
+    )
 
-    # TODO: Split into a function
-    # TODO: Add boolean save output setting in config
-    # obs_df_parquet_path = output_path / f"{partition_key}obs_df.parquet"
-    # logger.info(
-    #    f"Writing transformed observation data to {obs_df_parquet_path}",
-    # )
-    # obs_df.write_parquet(obs_df_parquet_path)
-    # logger.info(
-    #    "Successfully wrote transformed observation data to "
-    #    f"{obs_df_parquet_path}",
-    # )
-
-    cand_df = transform_spccl(cand_df=cand_df, obs_df=obs_df)
-
-    # TODO: Split into function
-    # cand_df_parquet_path = output_path / f"{partition_key}cand_df.parquet"
-    # logger.info(f"Writing transformed cand data to {cand_df_parquet_path}")
-    # cand_df.write_parquet(cand_df_parquet_path)
-    # logger.info(
-    #    f"Successfully wrote transformed cand data to {cand_df_parquet_path}",
-    # )
-
-    return obs_df, cand_df
+    return obs_df, transformed_cand_df_partial()
 
 
 def load(
     obs_df: pl.DataFrame,
     cand_df: pl.DataFrame,
-) -> tuple[pl.DataFrame, pl.DataFrame] | None:
-    """Load MeerTRAP data into the database."""
-    # TODO: Check for all early stopping conditions
-    # TODO: Split into function
-    if len(obs_df) == 0 or len(cand_df) == 0:
-        logger.info("No data to load into the database.")
-        return None
+) -> tuple[pl.DataFrame, pl.DataFrame]:
+    """Load MeerTRAP data into the database.
+
+    Args:
+        obs_df (pl.DataFrame): DataFrame containing the transformed
+        observation metadata.
+        cand_df (pl.DataFrame): DataFrame containing the transformed
+        candidate data.
+
+    Returns:
+        tuple[pl.DataFrame, pl.DataFrame]: DataFrames containing the loaded
+        observation and candidate data, respectively.
+
+    """
+    if not (len(obs_df) > 0 and len(cand_df) > 0):
+        logger.info("No transformed data to load, early stopping.")
+        return obs_df, cand_df
 
     logger.info("Loading MeerTRAP data into the database")
     with engine.connect() as conn, conn.begin():
@@ -144,5 +189,8 @@ def load(
 
         logger.info("Data loaded successfully")
 
-        # TODO: Option to write loaded data to parquet
+        if config.save_output:
+            obs_df.write_parquet(config.inserted_obs_data_path)
+            cand_df.write_parquet(config.inserted_cand_data_path)
+
         return obs_df, cand_df

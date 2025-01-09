@@ -9,19 +9,9 @@ from astropy.time import Time
 from ska_src_maltopuft_etl import utils
 from ska_src_maltopuft_etl.core.exceptions import UnexpectedShapeError
 
-logger = logging.getLogger(__name__)
+from .models import SPCCL_FILE_TO_DF_COLUMN_MAP
 
-SPCCL_FILE_TO_DF_COLUMNS = {
-    "beam_mode": "cand.beam_mode",
-    "mjd": "cand.mjd",
-    "dm": "cand.dm",
-    "width": "cand.width",
-    "snr": "cand.snr",
-    "beam": "cand.beam",
-    "ra": "cand.ra",
-    "dec": "cand.dec",
-    "plot_file": "sp_cand.plot_path",
-}
+logger = logging.getLogger(__name__)
 
 
 def deduplicate_candidates(cand_df: pl.DataFrame) -> pl.DataFrame:
@@ -225,6 +215,6 @@ def transform_spccl(
     obs_df: pl.DataFrame,
 ) -> pl.DataFrame:
     """MeerTRAP candidate transformation entrypoint."""
-    cand_df = cand_df.rename(SPCCL_FILE_TO_DF_COLUMNS)
+    cand_df = cand_df.rename(SPCCL_FILE_TO_DF_COLUMN_MAP)
     cand_df = transform_candidate(cand_df=cand_df, obs_df=obs_df)
     return transform_sp_candidate(cand_df=cand_df)
