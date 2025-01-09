@@ -76,21 +76,20 @@ def parse_spccl(filename: Path) -> dict[str, Any]:
     return data.model_dump()
 
 
-def parse_candidates(directory: Path) -> pl.DataFrame:
+def parse_candidates(directory: Path, n_file: int) -> pl.DataFrame:
     """Parse MeerTRAP single pulse candidate files in nested directories.
 
     Args:
         directory (Path): Parent directory to parse.
+        n_file (int): The expected number of files to parse.
 
     Returns:
         pl.DataFrame: Parsed MeerTRAP candidate data.
 
     """
-    logger.info(f"Parsing MeerTRAP candidate data from {directory}")
+    logger.info(f"Parsing {n_file} MeerTRAP candidate data from {directory}")
 
-    n_spccl_files = len(list(directory.rglob("*spccl*")))
     parsed_data = []
-
     with ThreadPoolExecutor() as executor:
         futures = [
             executor.submit(
@@ -101,14 +100,18 @@ def parse_candidates(directory: Path) -> pl.DataFrame:
         ]
 
         n_task_fail = 0
-        for future in tqdm(as_completed(futures), total=n_spccl_files):
+        for future in tqdm(as_completed(futures), total=n_file):
             try:
                 parsed_data.append(future.result())
             except Exception:  # pylint: disable=broad-exception-caught
                 n_task_fail += 1
                 logger.exception("Task failed. Reason:")
 
+    cand_df = pl.DataFrame(parsed_data)
+
     logger.info(
-        f"Successfully parsed {n_spccl_files - n_task_fail} files from {directory}",
+        f"Executed {n_file - n_task_fail} tasks. "
+        f"Parsed {len(cand_df)} files from {directory}",
     )
-    return pl.DataFrame(parsed_data)
+
+    return cand_df

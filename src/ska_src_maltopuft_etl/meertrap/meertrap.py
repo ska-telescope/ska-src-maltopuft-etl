@@ -35,8 +35,10 @@ def parse(
         data, respectively.
 
     """
-    obs_df = parse_observations(directory=directory)
-    cand_df = parse_candidates(directory=directory)
+    # Number of candidates can be very large, so only calculate it once
+    n_cand = sum(1 for x in directory.rglob("*") if x.is_dir())
+    obs_df = parse_observations(directory=directory, n_file=n_cand)
+    cand_df = parse_candidates(directory=directory, n_file=n_cand)
     return obs_df, cand_df
 
 
