@@ -1,10 +1,12 @@
 """Extract single pulse candidate data."""
 
 import logging
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from typing import Any
 
 import polars as pl
+from tqdm import tqdm
 
 from .models import MeertrapSpccl
 
@@ -84,11 +86,29 @@ def parse_candidates(directory: Path) -> pl.DataFrame:
         pl.DataFrame: Parsed MeerTRAP candidate data.
 
     """
-    # TODO: Refactor
-    # TODO: Async
+    logger.info(f"Parsing MeerTRAP candidate data from {directory}")
+
+    n_spccl_files = len(list(directory.rglob("*spccl*")))
     parsed_data = []
-    for idx, file in enumerate(directory.rglob("*spccl*")):
-        if idx % 1000 == 0:
-            logger.info(f"Parsing SPCCL #{idx}")
-        parsed_data.append(parse_spccl(filename=file))
+
+    with ThreadPoolExecutor() as executor:
+        futures = [
+            executor.submit(
+                parse_spccl,
+                file,
+            )
+            for file in directory.rglob("*spccl*")
+        ]
+
+        n_task_fail = 0
+        for future in tqdm(as_completed(futures), total=n_spccl_files):
+            try:
+                parsed_data.append(future.result())
+            except Exception:  # pylint: disable=broad-exception-caught
+                n_task_fail += 1
+                logger.exception("Task failed. Reason:")
+
+    logger.info(
+        f"Successfully parsed {n_spccl_files - n_task_fail} files from {directory}",
+    )
     return pl.DataFrame(parsed_data)
