@@ -89,8 +89,8 @@ SPCCL_FILE_TO_DF_COLUMN_MAP = {
     "beam_mode": "cand.beam_mode",
     "ra": "cand.ra",
     "dec": "cand.dec",
-    "label": "cand.label",
-    "probability": "cand.probability",
-    "fil_file": "cand.fil_file",
+    "label": "label",
+    "probability": "probability",
+    "fil_file": "fil_file",
     "plot_file": "sp_cand.plot_path",
 }

@@ -49,37 +49,31 @@ def transform(df: pl.DataFrame) -> pl.DataFrame:
     return (
         # pylint: disable=duplicate-code
         df.with_columns(
-            [
-                pl.struct(["known_ps.ra", "known_ps.dec"])
-                .map_elements(
-                    lambda row: utils.hms_to_degrees(
-                        row["known_ps.ra"],
-                        row["known_ps.dec"],
-                    ),
-                    pl.List(pl.Float64),
-                )
-                .alias("ra_dec_degrees"),
-            ],
+            pl.struct(["known_ps.ra", "known_ps.dec"])
+            .map_elements(
+                lambda row: utils.hms_to_degrees(
+                    row["known_ps.ra"],
+                    row["known_ps.dec"],
+                ),
+                pl.List(pl.Float64),
+            )
+            .alias("ra_dec_degrees"),
         )
         .with_columns(
-            [
-                pl.col("ra_dec_degrees").list.get(0).alias("known_ps.ra"),
-                pl.col("ra_dec_degrees").list.get(1).alias("known_ps.dec"),
-            ],
+            pl.col("ra_dec_degrees").list.get(0).alias("known_ps.ra"),
+            pl.col("ra_dec_degrees").list.get(1).alias("known_ps.dec"),
         )
         .drop("ra_dec_degrees")
         .with_columns(
-            [
-                pl.concat_str(["known_ps.ra", "known_ps.dec"], separator=",")
-                .alias("known_ps.pos")
-                .map_elements(utils.add_parenthesis, pl.String),
-                # Catalogue columns
-                pl.lit("ATNF pulsar catalogue").alias("cat.name"),
-                pl.lit(ATNF_BASE_URL).alias("cat.url"),
-                pl.lit(1).alias("catalogue_id"),
-                # CatalogueVisit columns
-                pl.lit(1).alias("catalogue_visit_id"),
-            ],
+            pl.concat_str(["known_ps.ra", "known_ps.dec"], separator=",")
+            .alias("known_ps.pos")
+            .map_elements(utils.add_parenthesis, pl.String),
+            # Catalogue columns
+            pl.lit("ATNF pulsar catalogue").alias("cat.name"),
+            pl.lit(ATNF_BASE_URL).alias("cat.url"),
+            pl.lit(1).alias("catalogue_id"),
+            # CatalogueVisit columns
+            pl.lit(1).alias("catalogue_visit_id"),
         )
     )
 
