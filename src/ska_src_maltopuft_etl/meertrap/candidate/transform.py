@@ -111,7 +111,13 @@ def get_candidate_beam_ids(
             obs_df.sort(by="obs.t_min"),
             by_left=["cand.beam", "cand.coherent"],
             by_right=["beam.number", "beam.coherent"],
-            left_on="cand.observed_at",
+            # cand.observed_at is recorded to millisecond precision, but
+            # obs.t_min is only recorded to second precision. Therefore, we
+            # round cand.observed_at to the nearest second to ensure the
+            # join_asof with backwards strategy works in the case where the
+            # candidate is detected in the first 500 milliseconds of an
+            # observation.
+            left_on=pl.col("cand.observed_at").dt.round("1s"),
             right_on="obs.t_min",
             strategy="backward",
         )
@@ -130,7 +136,7 @@ def get_candidate_beam_ids(
         .drop("cand.beam", "cand.coherent")
     )
 
-    if len(cand_df) != n_cand:
+    if len(cand_df) != n_cand or cand_df["beam_id"].null_count() > 0:
         msg = (
             "Unexpected number of candidates after join. Expected "
             f"{n_cand}, got {len(cand_df)}"

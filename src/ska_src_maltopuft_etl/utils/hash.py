@@ -21,7 +21,10 @@ def calculate_hash(
 
     """
     hash_obj = hash_algorithm()
-    with Path.open(file_path, "rb") as f:
+    with Path.open(  # pylint: disable=unspecified-encoding
+        file_path,
+        "rb",
+    ) as f:
         while chunk := f.read(8192):
             hash_obj.update(chunk)
     return hash_obj.hexdigest()

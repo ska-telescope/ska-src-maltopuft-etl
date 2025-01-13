@@ -34,7 +34,7 @@ logger = logging.getLogger(__name__)
 def read_or_parse_parquet(
     file_path: Path,
     parse_func: Callable,
-    **kwargs: dict[str, Any],
+    **kwargs: Any,
 ) -> pl.DataFrame:
     """Reads a parquet file from the given path if it exists, otherwise
     reparses.
@@ -47,7 +47,7 @@ def read_or_parse_parquet(
         doesn't exist, to save the parsed output to.
         parse_func (Callable): Function to parse the file with if it doesn't
         exist.
-        kwargs (dict[str, Any]): Key word arguments passed to parse_func.
+        kwargs (Any): Key word arguments passed to parse_func.
 
     Returns:
         pl.DataFrame: DataFrame containing the read or parsed Parquet file
@@ -62,7 +62,7 @@ def read_or_parse_parquet(
         logger.info(f"No parsed data found at {file_path}, recomputing.")
         df = parse_func(**kwargs)
         if config.save_output:
-            df.write_parquet(file_path)
+            df.write_parquet(file_path, compression="gzip")
             logger.info(f"Saved output to {file_path}")
 
     return df
@@ -76,13 +76,22 @@ def parse() -> tuple[pl.DataFrame, pl.DataFrame]:
         data, respectively.
 
     """
-    n_cand = sum(1 for entry in os.scandir(config.data_path) if entry.is_dir())
+    if not config.partition_data_path.exists():
+        logger.info(
+            f"Directory {config.partition_data_path} does not exist, "
+            "early stopping.",
+        )
+        return pl.DataFrame(), pl.DataFrame()
+
+    n_cand = sum(
+        1 for entry in os.scandir(config.partition_data_path) if entry.is_dir()
+    )
 
     parsed_obs_partial = partial(
         read_or_parse_parquet,
         file_path=config.raw_obs_data_path,
         parse_func=parse_observations,
-        directory=config.data_path,
+        directory=config.partition_data_path,
         n_file=n_cand,
     )
 
@@ -90,7 +99,7 @@ def parse() -> tuple[pl.DataFrame, pl.DataFrame]:
         read_or_parse_parquet,
         file_path=config.raw_cand_data_path,
         parse_func=parse_candidates,
-        directory=config.data_path,
+        directory=config.partition_data_path,
         n_file=n_cand,
     )
 

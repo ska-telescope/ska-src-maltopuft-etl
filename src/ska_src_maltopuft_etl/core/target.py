@@ -24,15 +24,12 @@ class TargetInformation:
     def unique_constraint(self) -> str | None:
         """The target table unique constraint name."""
         with engine.connect() as conn:
-            ucs = (
-                inspect(conn)
-                .get_unique_constraints(self.table_name)
-            )
+            ucs = inspect(conn).get_unique_constraints(self.table_name)
 
         if len(ucs) > 0:
             # We are only interested in `UniqueConstraint`s here, not
             # `UniqueIndex`es. Only one UniqueConstraint can be declared per
-            # table – if there's more than one element in ucs then we know
+            # table. If there's more than one element in ucs then we know
             # each is a `UniqueIndex`.
             return None
 
@@ -55,6 +52,6 @@ class TargetInformation:
         return [
             # There are no composite primary keys in MALTOPUFTDB schema,
             # so we can just access the 0th element.
-            fk.get("constrained_columns")[0]
+            fk.get("constrained_columns", [])[0]
             for fk in foreign_keys
         ]

@@ -6,11 +6,13 @@ from typing import Any
 
 import sqlalchemy as sa
 from psycopg import errors as psycopgexc
+from ska_src_maltopuft_backend.core.types import ModelT
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
 from ska_src_maltopuft_etl.core.exceptions import (
     DuplicateInsertError,
     ForeignKeyError,
+    MissingDataOnConflictError,
 )
 
 from .target import TargetInformation
@@ -25,7 +27,7 @@ def flatten_ids(returned_ids: Any) -> list[int]:
 
 def insert_(
     conn: sa.Connection,
-    model_class: type[sa.Table],
+    model_class: ModelT,
     data: Sequence[Mapping[Any, Any]],
 ) -> list[int]:
     """Bulk inserts data into a database table.
@@ -106,4 +108,13 @@ def insert_row_or_get_conflict_id(
         select_stmt = select_stmt.where(getattr(target.model_class, k) == v)
 
     stmt = sa.select(insert_stmt).union(select_stmt)
-    return conn.execute(stmt).fetchone()[0]
+    res = conn.execute(stmt).fetchone()
+
+    if res is None or len(res) == 0:
+        msg = (
+            f"No {target.table_name} data returned for conflicting "
+            f"parameters {data}"
+        )
+        raise MissingDataOnConflictError(msg) from None
+
+    return res[0]

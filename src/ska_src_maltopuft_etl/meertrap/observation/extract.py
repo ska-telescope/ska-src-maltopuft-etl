@@ -19,7 +19,7 @@ from .models import MeertrapRunSummary
 logger = logging.getLogger(__name__)
 
 
-run_summary_hash_map: dict[str:str] = defaultdict(str)
+run_summary_hash_map: dict[str, str] = defaultdict(str)
 
 
 def read_json(filename: Path) -> dict[str, Any]:
