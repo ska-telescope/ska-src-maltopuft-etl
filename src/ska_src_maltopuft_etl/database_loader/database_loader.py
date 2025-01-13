@@ -1,14 +1,15 @@
 """Loads transformed data into MALTOPUFTDB."""
 
 import logging
-from typing import Any
 
 import polars as pl
 import sqlalchemy as sa
-from ska_src_maltopuft_backend.core.types import ModelT
 
 from ska_src_maltopuft_etl.core.exceptions import DuplicateInsertError
-from ska_src_maltopuft_etl.core.insert import insert_
+from ska_src_maltopuft_etl.core.insert import (
+    insert_,
+    insert_row_or_get_conflict_id,
+)
 from ska_src_maltopuft_etl.core.target import TargetInformation
 
 logger = logging.getLogger(__name__)
@@ -54,94 +55,20 @@ class DatabaseLoader:
             DataFrame ready for insertion into MALTOPUFTDB.
 
         """
-        table_prefix = target.table_prefix
-        primary_key = target.primary_key
-        foreign_keys = target.foreign_keys
-
         columns = [
             col
             for col in df.columns
-            if col.startswith(table_prefix)
-            or col == primary_key
-            or col in foreign_keys
+            if col.startswith(target.table_prefix)
+            or col == target.primary_key
+            or col in target.foreign_keys
         ]
         return (
             df.select(columns)
-            .unique(primary_key)
-            .rename({col: col.replace(table_prefix, "") for col in columns})
-        )
-
-    def insert_row(
-        self,
-        data: dict[str, Any],
-        target: TargetInformation,
-        *,
-        transactional: bool,
-    ) -> int:
-        """Insert target row(s) into the database.
-
-        Args:
-            data (dict[str, Any]): Attributes to insert.
-            target (TargetInformation): The target table to fetch from.
-            transactional (bool): Perform the insert in a nested
-            transaction.
-
-        Returns:
-            list[int]: The inserted IDs.
-
-        """
-        if not transactional:
-            return insert_(
-                conn=self.conn,
-                model_class=target.model_class,
-                data=[data],
-            )[0]
-
-        with self.conn.begin_nested():
-            return self.insert_row(
-                target=target,
-                data=data,
-                transactional=False,
+            .unique(target.primary_key)
+            .rename(
+                {col: col.replace(target.table_prefix, "") for col in columns},
             )
-
-    def get_by(
-        self,
-        target: TargetInformation,
-        attributes: dict[Any, Any],
-    ) -> sa.Row[ModelT] | None:
-        """Fetch a row with given attributes from a table.
-
-        Args:
-            target (TargetInformation): The target table to fetch from.
-            attributes (dict[str, Any]): The attributes to filter by.
-
-        Returns:
-            sa.Row[ModelT] | None: The fetched row or None if row not found.
-
-        """
-        logger.debug(
-            f"Fetching {target.table_name()} row "
-            f"with attributes {attributes}",
         )
-        stmt = sa.select(target.model_class)
-        for k, v in attributes.items():
-            stmt = stmt.where(getattr(target.model_class, k) == v)
-
-        logger.debug(stmt)
-        res = self.conn.execute(stmt).fetchone()
-        if res is None:
-            logger.debug(
-                f"Row with attributes {attributes} does not exist in table "
-                f"{target.table_name()}",
-            )
-            return res
-
-        logger.debug(
-            f"Fetched {target.table_name()} row with id {res.id} "
-            f"with attributes {attributes}",
-        )
-        logger.debug(f"Fetched {target.table_name()}: {res}")
-        return res
 
     def get_or_insert_row_if_not_exist(
         self,
@@ -164,16 +91,12 @@ class DatabaseLoader:
         key_map = {}
         for attrs in df.to_dicts():
             local_pk = attrs.pop(target.primary_key)
-            res = self.get_by(target=target, attributes=attrs)
-
-            if res is not None:
-                key_map[local_pk] = res.id
-            else:
-                key_map[local_pk] = self.insert_row(
-                    data=attrs,
-                    target=target,
-                    transactional=False,
-                )
+            db_id = insert_row_or_get_conflict_id(
+                conn=self.conn,
+                target=target,
+                data=attrs,
+            )
+            key_map[local_pk] = db_id
 
         return key_map
 
@@ -228,7 +151,7 @@ class DatabaseLoader:
             inserted_ids = insert_(
                 conn=self.conn,
                 model_class=target.model_class,
-                data=rows_df.to_dicts(),
+                data=rows_df.drop(target.primary_key).to_dicts(),
             )
 
         self.foreign_keys_map[target.primary_key] = dict(

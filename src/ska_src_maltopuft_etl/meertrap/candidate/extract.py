@@ -1,27 +1,16 @@
 """Extract single pulse candidate data."""
 
 import logging
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from typing import Any
 
-from .models import MeertrapSpccl
+import polars as pl
+from tqdm import tqdm
+
+from .models import SPCCL_FILE_TO_DF_COLUMN_MAP, MeertrapSpccl
 
 logger = logging.getLogger(__name__)
-
-SPCCL_COLUMNS = (
-    "mjd",
-    "dm",
-    "width",
-    "snr",
-    "beam",
-    "beam_mode",
-    "ra",
-    "dec",
-    "label",
-    "probability",
-    "fil_file",
-    "plot_file",
-)
 
 
 def read_csv(filename: Path) -> list[str]:
@@ -35,15 +24,33 @@ def read_csv(filename: Path) -> list[str]:
 
 
 def read_spccl(filename: Path) -> dict[str, Any]:
-    """Extract candidate data from an .spccl (tsv) file."""
+    """Extract candidate data from an .spccl (tsv) file.
+
+    Args:
+        filename (Path): SPCCL file path.
+
+    Raises:
+        ValueError: If the file contains more than one candidate.
+
+    Returns:
+        dict[str, Any]: Dictionary containing SPCCL data.
+
+    """
     lines = read_csv(filename=filename)
+
     if len(lines) != 1:
         msg = f"Expected 1 candidate in file {filename}, found {len(lines)}"
         raise ValueError(msg)
+
     # Convert tsv to csv
-    line = lines[0].replace("\t", ",")
-    # Remove newline char
-    line = line.rstrip()
+    line = (
+        lines[0]
+        # Replace tab delimiter with ,
+        .replace("\t", ",")
+        # Remove newline char
+        .rstrip()
+    )
+
     # Get list of each comma separated value (dropping index at element 0)
     split_line = line.split(",")[1:]
 
@@ -54,18 +61,58 @@ def read_spccl(filename: Path) -> dict[str, Any]:
         for val in split_line
     ]
 
-    return dict(zip(SPCCL_COLUMNS, values, strict=False))
+    return dict(zip(SPCCL_FILE_TO_DF_COLUMN_MAP.keys(), values, strict=False))
 
 
-def extract_spccl(filename: Path) -> dict[str, Any]:
-    """Extracts candidate data from a MeerTRAP .spccl file.
+def parse_spccl(filename: Path) -> dict[str, Any]:
+    """Parses candidate data from a MeerTRAP .spccl file.
 
     :param filename:  The absolute path to the spccl file.
     """
-    candidate = filename.parent.parts[-1]
+    candidate_directory = filename.parent.parts[-1]
     data = MeertrapSpccl(
         **read_spccl(filename=filename),
-        candidate=candidate,
-        filename=f"{candidate}/{filename.stem}",
+        filename=f"{candidate_directory}/{filename.stem}",
     )
     return data.model_dump()
+
+
+def parse_candidates(directory: Path, n_file: int) -> pl.DataFrame:
+    """Parse MeerTRAP single pulse candidate files in nested directories.
+
+    Args:
+        directory (Path): Parent directory to parse.
+        n_file (int): The expected number of files to parse.
+
+    Returns:
+        pl.DataFrame: Parsed MeerTRAP candidate data.
+
+    """
+    logger.info(f"Parsing {n_file} MeerTRAP candidate data from {directory}")
+
+    parsed_data = []
+    with ThreadPoolExecutor() as executor:
+        futures = [
+            executor.submit(
+                parse_spccl,
+                file,
+            )
+            for file in directory.rglob("*spccl*")
+        ]
+
+        n_task_fail = 0
+        for future in tqdm(as_completed(futures), total=n_file):
+            try:
+                parsed_data.append(future.result())
+            except Exception:  # pylint: disable=broad-exception-caught
+                n_task_fail += 1
+                logger.exception("Task failed. Reason:")
+
+    cand_df = pl.DataFrame(parsed_data)
+
+    logger.info(
+        f"Executed {n_file - n_task_fail} tasks. "
+        f"Parsed {len(cand_df)} files from {directory}",
+    )
+
+    return cand_df

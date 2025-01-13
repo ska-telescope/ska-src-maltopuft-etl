@@ -6,12 +6,16 @@ from typing import Any
 
 import sqlalchemy as sa
 from psycopg import errors as psycopgexc
-from ska_src_maltopuft_backend.core.database.base import Base
+from ska_src_maltopuft_backend.core.types import ModelT
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 
 from ska_src_maltopuft_etl.core.exceptions import (
     DuplicateInsertError,
     ForeignKeyError,
+    MissingDataOnConflictError,
 )
+
+from .target import TargetInformation
 
 logger = logging.getLogger(__name__)
 
@@ -23,7 +27,7 @@ def flatten_ids(returned_ids: Any) -> list[int]:
 
 def insert_(
     conn: sa.Connection,
-    model_class: type[Base],
+    model_class: ModelT,
     data: Sequence[Mapping[Any, Any]],
 ) -> list[int]:
     """Bulk inserts data into a database table.
@@ -68,3 +72,49 @@ def insert_(
     logger.debug(f"Inserted parameters are: ({ids},{data})")
     logger.info(f"Inserted IDs {ids} into {model_class.__table__.name}")
     return ids
+
+
+def insert_row_or_get_conflict_id(
+    conn: sa.Connection,
+    target: TargetInformation,
+    data: Mapping[Any, Any],
+) -> int:
+    """Attempts to insert a row into the database, returning the
+    conflicting ID if there is a conflict.
+
+    Args:
+        conn (Session): Database connection.
+        target (TargetInformation): Database table target information.
+        data (dict[str, Any]): Dictionary containing lists the row attributes
+            to insert into the database, where keys and values are the table's
+            column names and values, respectively.
+
+    Returns:
+        int: The inserted or conflicting ID.
+
+    """
+    insert_stmt = (
+        pg_insert(target.model_class)
+        .values(data)
+        .on_conflict_do_nothing(constraint=target.unique_constraint)
+        .returning(target.model_class.id)
+        .cte("e")
+    )
+
+    select_stmt = sa.select(target.model_class.id)
+    for k, v in data.items():
+        if not hasattr(target.model_class, k):
+            continue
+        select_stmt = select_stmt.where(getattr(target.model_class, k) == v)
+
+    stmt = sa.select(insert_stmt).union(select_stmt)
+    res = conn.execute(stmt).fetchone()
+
+    if res is None or len(res) == 0:
+        msg = (
+            f"No {target.table_name} data returned for conflicting "
+            f"parameters {data}"
+        )
+        raise MissingDataOnConflictError(msg) from None
+
+    return res[0]

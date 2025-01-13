@@ -4,7 +4,6 @@
 
 import base64
 from io import BytesIO
-from pathlib import Path
 
 import matplotlib.pyplot as plt
 import polars as pl
@@ -17,7 +16,7 @@ from dagster import (
 )
 
 from ska_src_maltopuft_etl.core.config import config
-from ska_src_maltopuft_etl.meertrap.meertrap import extract, load, transform
+from ska_src_maltopuft_etl.meertrap.meertrap import load, parse, transform
 
 daily_sb_id_partitions = DailyPartitionsDefinition(
     start_date="2023-11-12",
@@ -26,53 +25,40 @@ daily_sb_id_partitions = DailyPartitionsDefinition(
 
 
 @asset(partitions_def=daily_sb_id_partitions)
-def extract_meertrap_data(
+def parse_meertrap_data(
     context: AssetExecutionContext,
-) -> pl.DataFrame:
-    """Extract MeerTRAP observation and candidate data."""
+) -> tuple[pl.DataFrame, pl.DataFrame]:
+    """Parse MeerTRAP observation and candidate data."""
     # pylint: disable=duplicate-code
-
-    partition_key = context.partition_key
-
-    output_path: Path = config.get("output_path", Path())
-    output_path.mkdir(parents=True, exist_ok=True)
-    output_parquet = output_path / f"{partition_key}_raw.parquet"
-
-    try:
-        raw_df = pl.read_parquet(output_parquet)
-    except FileNotFoundError:
-        raw_df = extract(
-            root_path=config.get("data_path", "") / partition_key,
-        )
-        raw_df.write_parquet(output_parquet, compression="gzip")
-    return raw_df
+    config.partition_key = context.partition_key
+    return parse()
 
 
 @asset(partitions_def=daily_sb_id_partitions)
-def transform_meerkat_data(
+def transform_meertrap_data(
     context: AssetExecutionContext,
-    extract_meertrap_data: pl.DataFrame,
+    parse_meertrap_data: tuple[pl.DataFrame, pl.DataFrame],
 ) -> tuple[pl.DataFrame, pl.DataFrame]:
     """Transform MeerTRAP observation and candidate data to MALTOPUFTDB
     schema.
     """
-    partition_key = context.asset_partition_key_for_input(
-        "extract_meertrap_data",
+    config.partition_key = context.asset_partition_key_for_input(
+        "parse_meertrap_data",
     )
 
-    obs_df, cand_df = transform(
-        df=extract_meertrap_data,
-        partition_key=partition_key,
+    obs_df, cand_df = parse_meertrap_data
+    return transform(
+        obs_df=obs_df,
+        cand_df=cand_df,
     )
-    return obs_df, cand_df
 
 
 @asset(partitions_def=daily_sb_id_partitions)
 def plot_cand_obs_count(
-    transform_meerkat_data: tuple[pl.DataFrame, pl.DataFrame],
+    transform_meertrap_data: tuple[pl.DataFrame, pl.DataFrame],
 ) -> MaterializeResult:
     """Plot the number of candidates and observations on a bar chart."""
-    obs_df, cand_df = transform_meerkat_data
+    obs_df, cand_df = transform_meertrap_data
 
     try:
         num_obs = len(obs_df["observation_id"].unique())
@@ -92,12 +78,16 @@ def plot_cand_obs_count(
 
 
 @asset(partitions_def=daily_sb_id_partitions)
-def load_meerkat_data(
-    transform_meerkat_data: tuple[pl.DataFrame, pl.DataFrame],
-) -> None:
+def load_meertrap_data(
+    context: AssetExecutionContext,
+    transform_meertrap_data: tuple[pl.DataFrame, pl.DataFrame],
+) -> tuple[pl.DataFrame, pl.DataFrame]:
     """Load MeerTRAP candidate and observation data into MALTOPUFTDB."""
-    obs_df, cand_df = transform_meerkat_data
-    load(
+    config.partition_key = context.asset_partition_key_for_input(
+        "transform_meertrap_data",
+    )
+    obs_df, cand_df = transform_meertrap_data
+    return load(
         obs_df=obs_df,
         cand_df=cand_df,
     )

@@ -292,10 +292,6 @@ class ScheduleBlockData(BaseModel):
 class MeertrapRunSummary(BaseModel):
     """The MeerTRAP run summary data model."""
 
-    candidate: str = Field(
-        ...,
-        description="The name of the candidate data archive.",
-    )
     filename: str = Field(..., description="The run summary filename.")
     beams: BeamConfig = Field(..., description="The beam configuration.")
     observation: ObservationData = Field(
@@ -358,3 +354,30 @@ class MeertrapRunSummary(BaseModel):
         associate this configuration with the output data.
         """
         return str(search_pipeline)
+
+
+RUN_SUMMARY_FILE_TO_DF_COLUMN_MAP = {
+    "filename": "filename",
+    "beams.ca_target_request.beams": "beams.beams",
+    "beams.ca_target_request.tilings": "beams.tilings",
+    "beams.coherent_beam_shape.angle": "cb.angle",
+    "beams.coherent_beam_shape.overlap": "cb.fraction_overlap",
+    "beams.coherent_beam_shape.x": "cb.x",
+    "beams.coherent_beam_shape.y": "cb.y",
+    "beams.host_beams": "beams.host_beams",
+    "observation.bw": "obs.bw",
+    "observation.cfreq": "obs.cfreq",
+    "observation.nbit": "obs.nbit",
+    "observation.nchan": "obs.em_xel",
+    "observation.npol": "obs.pol_xel",
+    "observation.tsamp": "obs.t_resolution",
+    "sb.id": "mk_sb.meerkat_id",
+    "sb.id_code": "mk_sb.meerkat_id_code",
+    "sb.actual_start_time": "sb.start_at",
+    "sb.expected_duration_seconds": "sb.expected_duration_seconds",
+    "sb.proposal_id": "mk_sb.proposal_id",
+    "sb.script_profile_config": "sb.script_profile_config",
+    "sb.targets": "sb.targets",
+    "utc_start": "obs.t_min",
+    "utc_stop": "obs.t_max",
+}

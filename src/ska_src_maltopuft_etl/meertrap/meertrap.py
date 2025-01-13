@@ -1,6 +1,15 @@
-"""Meertrap ETL entrypoint."""
+"""Meertrap ETL entrypoint.
+
+This module provides the ETL (Extract, Transform, Load) process for the
+MeerTRAP project. It includes functions to parse, transform, and load
+single pulse candidate data and observation metadata into the MALTOPUFT
+database schema.
+"""
 
 import logging
+import os
+from collections.abc import Callable
+from functools import partial
 from pathlib import Path
 from typing import Any
 
@@ -14,167 +23,148 @@ from ska_src_maltopuft_etl.meertrap.observation.targets import (
     observation_targets,
 )
 
-from .candidate.extract import extract_spccl
+from .candidate.extract import parse_candidates
 from .candidate.transform import transform_spccl
-from .observation.extract import extract_observation
+from .observation.extract import parse_observations
 from .observation.transform import transform_observation
 
 logger = logging.getLogger(__name__)
 
 
-def parse_candidate_dir(candidate_dir: Path) -> dict[str, Any]:
-    """Parse files in a candidate directory.
-
-    :param candidate_dir: The absolute path to the candidate directory to
-        parse.
-
-    :return: A dictionary containing the normalised candidate data.
-    """
-    run_summary_data, candidate_data = {}, {}
-    for file in candidate_dir.iterdir():
-        if file.match("*run_summary.json"):
-            logger.debug(f"Parsing observation metadata from {file}")
-            run_summary_data = extract_observation(filename=file)
-            continue
-        if file.match("*spccl.log"):
-            logger.debug(f"Parsing candidate data from {file}")
-            candidate_data = extract_spccl(filename=file)
-            continue
-        if file.match("*.jpg"):
-            continue
-
-        logger.warning(f"Found file {file} in unexpected format.")
-    return {**run_summary_data, **candidate_data}
-
-
-def extract(
-    root_path: Path = config.get("data_path", ""),
+def read_or_parse_parquet(
+    file_path: Path,
+    parse_func: Callable,
+    **kwargs: Any,
 ) -> pl.DataFrame:
-    """Extract MeerTRAP data archive from run_summary.json and spccl files.
+    """Reads a parquet file from the given path if it exists, otherwise
+    reparses.
 
-    :param root_path: The absolute path to the candidate data directory.
+    Reparsed files are optionally written to disk if
+    Config.save_output = True.
+
+    Args:
+        file_path (Path): Path to the parquet file to read or, if the file
+        doesn't exist, to save the parsed output to.
+        parse_func (Callable): Function to parse the file with if it doesn't
+        exist.
+        kwargs (Any): Key word arguments passed to parse_func.
+
+    Returns:
+        pl.DataFrame: DataFrame containing the read or parsed Parquet file
+        data.
+
     """
-    logger.info("Started extract routine")
+    try:
+        logger.info(f"Reading data from {file_path}")
+        df = pl.read_parquet(file_path)
+        logger.info(f"Successfully read data from {file_path}")
+    except FileNotFoundError:
+        logger.info(f"No parsed data found at {file_path}, recomputing.")
+        df = parse_func(**kwargs)
+        if config.save_output:
+            df.write_parquet(file_path, compression="gzip")
+            logger.info(f"Saved output to {file_path}")
 
-    cand_df = pl.DataFrame()
-    rows: list[dict[str, Any]] = []
+    return df
 
-    if len(list(root_path.glob("*"))) == 0:
-        logger.warning(
-            "No candidate data found in the specified directory, skipping.",
+
+def parse() -> tuple[pl.DataFrame, pl.DataFrame]:
+    """Parse MeerTRAP single pulse candidate data files in nested directories.
+
+    Returns
+        tuple[pl.DataFrame, pl.DataFrame]: Parsed observation and candidate
+        data, respectively.
+
+    """
+    if not config.partition_data_path.exists():
+        logger.info(
+            f"Directory {config.partition_data_path} does not exist, "
+            "early stopping.",
         )
-        return cand_df
+        return pl.DataFrame(), pl.DataFrame()
 
-    for idx, candidate_dir in enumerate(root_path.iterdir()):
-        if not candidate_dir.is_dir():
-            logger.warning(
-                f"Unexpected file {candidate_dir} found in {root_path}",
-            )
-            continue
+    n_cand = sum(
+        1 for entry in os.scandir(config.partition_data_path) if entry.is_dir()
+    )
 
-        if idx % 500 == 0:
-            logger.info(f"Parsing candidate #{idx} from {candidate_dir}")
-        if idx > 0 and (idx % 1000) == 0:
-            try:
-                cand_df = cand_df.vstack(pl.DataFrame(rows))
-            except (
-                pl.exceptions.SchemaError,
-                pl.exceptions.ComputeError,
-            ) as exc:
-                # If cand_df.utc_stop or rows.utc_stop contains only nulls
-                # and the other contains a legitimate datetime value, then
-                # df.concat() and df.vstack() raises an exception, most
-                # likely due to https://github.com/pola-rs/polars/issues/14730
-                # To work around this, we set all utc_stop values to null which
-                # is horrible but fine for now because we can cope with null
-                # utc_stop values in the transformation step. This should
-                # absolutely be removed when #14730 is fixed.
-                msg = (
-                    "Error concatenating dataframes, setting all utc_stop to "
-                    f"null: {exc}"
-                )
-                logger.warning(msg)
+    parsed_obs_partial = partial(
+        read_or_parse_parquet,
+        file_path=config.raw_obs_data_path,
+        parse_func=parse_observations,
+        directory=config.partition_data_path,
+        n_file=n_cand,
+    )
 
-                for row_idx, _ in enumerate(rows):
-                    rows[row_idx]["utc_stop"] = None
+    parsed_cand_partial = partial(
+        read_or_parse_parquet,
+        file_path=config.raw_cand_data_path,
+        parse_func=parse_candidates,
+        directory=config.partition_data_path,
+        n_file=n_cand,
+    )
 
-                tmp_df = pl.DataFrame(rows)
-                cand_df = cand_df.vstack(tmp_df)
-            rows = []
-        if idx > 0 and (idx % 5000) == 0:
-            cand_df = cand_df.rechunk()
-
-        rows.append(parse_candidate_dir(candidate_dir=candidate_dir))
-
-    cand_df = cand_df.vstack(pl.DataFrame(rows))
-
-    # Because utc_stop is often null the utc_stop column in the DataFrame
-    # is likely to be naive timezone so we explictly set it to UTC.
-    if cand_df.get_column("utc_stop").dtype == pl.Datetime:
-        cand_df = cand_df.with_columns(
-            pl.col("utc_stop").dt.replace_time_zone("UTC"),
-        )
-
-    logger.info("Extract routine completed successfully")
-    return cand_df
+    return parsed_obs_partial(), parsed_cand_partial()
 
 
 def transform(
-    df: pl.DataFrame,
-    output_path: Path = config.get("output_path", Path()),
-    partition_key: str = "",
+    obs_df: pl.DataFrame,
+    cand_df: pl.DataFrame,
 ) -> tuple[pl.DataFrame, pl.DataFrame]:
     """Transform MeerTRAP data to MALTOPUFT DB schema.
 
     Args:
-        df (pl.DataFrame): The raw data.
-        output_path (Path, optional): The path to write the transformed data
-        to.
-        partition_key (str, optional): The partition key for the data to
-        include in the output filename.
+        obs_df (pl.DataFrame): DataFrame containing observation metadata.
+        cand_df (pl.DataFrame): DataFrame containing candidate data.
 
     Returns:
-        tuple[pl.DataFrame, pl.DataFrame]: The observation and candidate
-        data, respectively.
+        tuple[pl.DataFrame, pl.DataFrame]: Transformed observation and
+        candidate data, respectively.
 
     """
-    if len(df) == 0:
-        return pl.DataFrame(), pl.DataFrame()
+    if not (len(obs_df) > 0 and len(cand_df) > 0):
+        logger.info("No parsed data to transform, early stopping.")
+        return obs_df, cand_df
 
-    obs_df = transform_observation(df=df)
-
-    if partition_key != "":
-        partition_key += "_"
-
-    obs_df_parquet_path = output_path / f"{partition_key}obs_df.parquet"
-    logger.info(
-        f"Writing transformed observation data to {obs_df_parquet_path}",
-    )
-    obs_df.write_parquet(obs_df_parquet_path)
-    logger.info(
-        "Successfully wrote transformed observation data to "
-        f"{obs_df_parquet_path}",
+    transformed_obs_df_partial = partial(
+        read_or_parse_parquet,
+        file_path=config.transformed_obs_data_path,
+        parse_func=transform_observation,
+        df=obs_df,
     )
 
-    cand_df = transform_spccl(df=obs_df)
-    cand_df_parquet_path = output_path / f"{partition_key}cand_df.parquet"
-    logger.info(f"Writing transformed cand data to {cand_df_parquet_path}")
-    cand_df.write_parquet(cand_df_parquet_path)
-    logger.info(
-        f"Successfully wrote transformed cand data to {cand_df_parquet_path}",
+    obs_df = transformed_obs_df_partial()
+
+    transformed_cand_df_partial = partial(
+        read_or_parse_parquet,
+        file_path=config.transformed_cand_data_path,
+        parse_func=transform_spccl,
+        cand_df=cand_df,
+        obs_df=obs_df,
     )
 
-    return obs_df, cand_df
+    return obs_df, transformed_cand_df_partial()
 
 
 def load(
     obs_df: pl.DataFrame,
     cand_df: pl.DataFrame,
-) -> tuple[pl.DataFrame, pl.DataFrame] | None:
-    """Load MeerTRAP data into the database."""
-    if len(obs_df) == 0 or len(cand_df) == 0:
-        logger.info("No data to load into the database.")
-        return None
+) -> tuple[pl.DataFrame, pl.DataFrame]:
+    """Load MeerTRAP data into the database.
+
+    Args:
+        obs_df (pl.DataFrame): DataFrame containing the transformed
+        observation metadata.
+        cand_df (pl.DataFrame): DataFrame containing the transformed
+        candidate data.
+
+    Returns:
+        tuple[pl.DataFrame, pl.DataFrame]: DataFrames containing the loaded
+        observation and candidate data, respectively.
+
+    """
+    if not (len(obs_df) > 0 and len(cand_df) > 0):
+        logger.info("No transformed data to load, early stopping.")
+        return obs_df, cand_df
 
     logger.info("Loading MeerTRAP data into the database")
     with engine.connect() as conn, conn.begin():
@@ -207,4 +197,9 @@ def load(
             cand_df = db.load(target=target, df=cand_df)
 
         logger.info("Data loaded successfully")
+
+        if config.save_output:
+            obs_df.write_parquet(config.inserted_obs_data_path)
+            cand_df.write_parquet(config.inserted_cand_data_path)
+
         return obs_df, cand_df

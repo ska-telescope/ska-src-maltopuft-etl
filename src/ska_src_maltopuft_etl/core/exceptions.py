@@ -15,3 +15,7 @@ class DuplicateInsertError(MaltopuftETLError):
 
 class ForeignKeyError(MaltopuftETLError):
     """Raised when a foreign key constraint is violated."""
+
+
+class MissingDataOnConflictError(MaltopuftETLError):
+    """Raised when no data is returned from an on conflict operation."""

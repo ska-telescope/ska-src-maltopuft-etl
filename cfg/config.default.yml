@@ -2,3 +2,5 @@ data_path:
   ./data
 output_path:
   ./results
+save_output:
+  true

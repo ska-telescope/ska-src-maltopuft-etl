@@ -5,7 +5,7 @@ include .make/python.mk
 
 # Define variables
 PYTHON_LINT_TARGET := ./src
-PYTHON_SWITCHES_FOR_PYLINT = --disable=R0903,W1203
+PYTHON_SWITCHES_FOR_PYLINT = --disable=C0116,R0903,W1203
 
 # Note:
 # PYTHON_VARS_AFTER_PYTEST are defined in pyproject.toml
