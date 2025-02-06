@@ -42,6 +42,7 @@ class Config(BaseModel):
 
     data_path: Path
     output_path: Path
+    remote_file_root_path: str
     partition_key: str = ""
     save_output: bool = True
 
