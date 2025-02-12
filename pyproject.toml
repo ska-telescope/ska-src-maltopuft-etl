@@ -133,7 +133,6 @@ target-version = "py311"
 # Pylint, flake8 and isort replacement
 select = ["ALL"]
 ignore = [
-    "ANN101",  # missing-type-self
     "ANN401",  # any-type
     "B008",  # function-call-in-default-argument
     "D203", "D213",  # Silence incompatability warnings

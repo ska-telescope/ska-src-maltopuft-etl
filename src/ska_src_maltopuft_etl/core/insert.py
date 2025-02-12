@@ -6,7 +6,7 @@ from typing import Any
 
 import sqlalchemy as sa
 from psycopg import errors as psycopgexc
-from ska_src_maltopuft_backend.core.types import ModelT
+from ska_src_maltopuft_backend.core.custom_types import ModelT
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
 from ska_src_maltopuft_etl.core.exceptions import (
