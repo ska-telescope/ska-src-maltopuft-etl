@@ -7,6 +7,7 @@ import polars as pl
 from astropy.time import Time
 
 from ska_src_maltopuft_etl import utils
+from ska_src_maltopuft_etl.core.config import config
 from ska_src_maltopuft_etl.core.exceptions import UnexpectedShapeError
 
 from .models import SPCCL_FILE_TO_DF_COLUMN_MAP
@@ -213,7 +214,18 @@ def transform_sp_candidate(cand_df: pl.DataFrame) -> pl.DataFrame:
         pl.DataFrame: Transformed sp_candidate data.
 
     """
-    return cand_df.with_row_index(name="sp_candidate_id", offset=1)
+    return cand_df.with_row_index(
+        name="sp_candidate_id",
+        offset=1,
+    ).with_columns(
+        pl.concat_str(
+            [
+                pl.lit(config.remote_file_root_path),
+                pl.col("sp_cand.plot_path"),
+            ],
+            separator="/",
+        ).alias("sp_cand.plot_path"),
+    )
 
 
 def transform_spccl(

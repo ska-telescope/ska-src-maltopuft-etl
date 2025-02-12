@@ -1,6 +1,8 @@
 data_path:
-  ./data
+  ./data/
 output_path:
-  ./results
+  ./results/meta/
 save_output:
   true
+remote_file_root_path:
+  ./results/data/

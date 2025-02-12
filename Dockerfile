@@ -13,7 +13,7 @@ RUN apt update && \
 ARG APP_PATH=/ska-src-maltopuft-etl
 WORKDIR ${APP_PATH}
 
-COPY pyproject.toml poetry.lock* ./
+COPY pyproject.toml poetry.lock* README.md LICENSE ./
 
 # Install project dependencies in virtual environment with poetry
 ENV PATH="$APP_PATH/.venv/bin:$PATH"
@@ -22,7 +22,9 @@ RUN poetry config virtualenvs.in-project true --local \
     && poetry install --only main --no-root
 
 # Copy source code and install main package
-COPY . .
+COPY entrypoint.sh entrypoint.sh
+COPY cfg/config.default.yml cfg/config.default.yml
+COPY src src
 RUN poetry install --only main
 
 CMD [ "/bin/sh", "entrypoint.sh" ]

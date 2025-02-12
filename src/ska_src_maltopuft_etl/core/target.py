@@ -2,7 +2,7 @@
 
 from dataclasses import dataclass
 
-from ska_src_maltopuft_backend.core.types import ModelT
+from ska_src_maltopuft_backend.core.custom_types import ModelT
 from sqlalchemy import inspect
 
 from .database import engine
