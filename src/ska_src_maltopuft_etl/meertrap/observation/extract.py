@@ -1,6 +1,5 @@
 """Extract single pulse candidate observation data."""
 
-import logging
 from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
@@ -12,12 +11,10 @@ from orjson import JSONDecodeError  # pylint: disable=no-name-in-module
 from tqdm import tqdm
 
 from ska_src_maltopuft_etl.core.flatten import flatten
+from ska_src_maltopuft_etl.meertrap import logger
 from ska_src_maltopuft_etl.utils import calculate_hash
 
 from .models import MeertrapRunSummary
-
-logger = logging.getLogger(__name__)
-
 
 run_summary_hash_map: dict[str, str] = defaultdict(str)
 
@@ -111,7 +108,9 @@ def parse_observations(directory: Path, n_file: int) -> pl.DataFrame:
                 result = future.result()
                 if result is not None:
                     parsed_data.append(result)
-            except Exception:  # pylint: disable=broad-exception-caught
+            except (
+                Exception  # noqa: BLE001
+            ):  # pylint: disable=broad-exception-caught
                 n_task_fail += 1
                 logger.exception("Task failed. Reason:")
 

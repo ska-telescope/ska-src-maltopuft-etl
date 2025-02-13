@@ -1,6 +1,5 @@
 """Database load functions."""
 
-import logging
 from collections.abc import Mapping, Sequence
 from typing import Any
 
@@ -9,6 +8,7 @@ from psycopg import errors as psycopgexc
 from ska_src_maltopuft_backend.core.custom_types import ModelT
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
+from ska_src_maltopuft_etl.core import logger
 from ska_src_maltopuft_etl.core.exceptions import (
     DuplicateInsertError,
     ForeignKeyError,
@@ -16,8 +16,6 @@ from ska_src_maltopuft_etl.core.exceptions import (
 )
 
 from .target import TargetInformation
-
-logger = logging.getLogger(__name__)
 
 
 def flatten_ids(returned_ids: Any) -> list[int]:
@@ -44,9 +42,6 @@ def insert_(
 
     """
     try:
-        logger.debug(
-            f"Inserting {data} into {model_class.__table__.name}",
-        )
         res = conn.execute(
             sa.insert(model_class).returning(
                 model_class.id,
@@ -55,7 +50,11 @@ def insert_(
             parameters=data,
         )
     except sa.exc.IntegrityError as exc:
-        msg = f"Failed to insert data into {model_class.__table__.name}"
+        msg = (
+            f"Failed to insert data into {model_class.__table__.name}, "
+            "attempting to insert row-by-row."
+        )
+        logger.warning(msg)
         if isinstance(exc.orig, psycopgexc.UniqueViolation):
             msg = f"{msg}, {exc.orig}"
             raise DuplicateInsertError(msg) from exc

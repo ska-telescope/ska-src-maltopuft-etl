@@ -7,6 +7,9 @@ from io import BytesIO
 
 import matplotlib.pyplot as plt
 import polars as pl
+from ska_src_maltopuft_etl.core.config import config
+from ska_src_maltopuft_etl.meertrap.meertrap import load, parse, transform
+
 from dagster import (
     AssetExecutionContext,
     DailyPartitionsDefinition,
@@ -14,9 +17,6 @@ from dagster import (
     MetadataValue,
     asset,
 )
-
-from ska_src_maltopuft_etl.core.config import config
-from ska_src_maltopuft_etl.meertrap.meertrap import load, parse, transform
 
 daily_sb_id_partitions = DailyPartitionsDefinition(
     start_date="2023-11-12",

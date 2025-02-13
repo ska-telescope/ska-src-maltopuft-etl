@@ -1,5 +1,12 @@
 FROM python:3.11-slim
 
+# Checkout and install dagster libraries needed to run the gRPC server
+# exposing your repository to dagster-webserver and dagster-daemon, and to load the DagsterInstance
+RUN pip install \
+    dagster \
+    dagster-postgres \
+    dagster-docker
+
 ARG POETRY_HOME="/opt/poetry"
 
 # Install poetry and any other binaries required.
@@ -22,9 +29,14 @@ RUN poetry config virtualenvs.in-project true --local \
     && poetry install --only main --no-root
 
 # Copy source code and install main package
-COPY entrypoint.sh entrypoint.sh
 COPY cfg/config.default.yml cfg/config.default.yml
 COPY src src
 RUN poetry install --only main
+    
+# Add repository code
+COPY .env.dagster .env
+COPY src/ src/
 
-CMD [ "/bin/sh", "entrypoint.sh" ]
+# Run dagster gRPC server on port 4000
+EXPOSE 4000
+CMD ["dagster", "api", "grpc", "-h", "0.0.0.0", "-p", "4000", "-m", "src.ska_src_maltopuft_etl.dagster.definitions"]

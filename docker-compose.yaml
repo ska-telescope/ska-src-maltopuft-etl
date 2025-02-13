@@ -1,0 +1,95 @@
+services:
+  dagsterdb:
+    image: postgres:16.3
+    container_name: dagsterdb
+    ports:
+      # Currently have another postgres instance exposed on port 5432
+      - "5433:5432"
+    environment:
+      POSTGRES_USER: $DAGSTER_POSTGRES_USER
+      POSTGRES_PASSWORD: $DAGSTER_POSTGRES_PASSWORD
+      POSTGRES_DB: $DAGSTER_POSTGRES_DB
+    networks:
+      - docker_example_network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $DAGSTER_POSTGRES_USER -d $DAGSTER_POSTGRES_DB"]
+      interval: 10s
+      timeout: 8s
+      retries: 5
+
+  meertrap-etl:
+    build:
+      context: .
+      dockerfile: ./Dockerfile.meertrap
+    container_name: meertrap-etl
+    image: meertrap-etl
+    restart: always
+    volumes:
+      - ${MALTOPUFT_ROOT_DIR}/ska-src-maltopuft-etl/cfg/:/ska-src-maltopuft-etl/cfg/
+      - ${MALTOPUFT_DATA_DIR}/:/data/
+    env_file:
+      - path: .env
+    environment:
+      DAGSTER_CURRENT_IMAGE: "meertrap-etl"
+    networks:
+      - docker_example_network
+      - ska-src-maltopuft_default
+
+  dagster-webserver:
+    build:
+      context: .
+      dockerfile: ./Dockerfile.dagster
+    entrypoint:
+      - dagster-webserver
+      - -h
+      - "0.0.0.0"
+      - -p
+      - "3000"
+      - -w
+      - workspace.yaml
+    container_name: dagster-webserver
+    expose:
+      - "3000"
+    ports:
+      - "3001:3000"
+    env_file:
+      - path: .env
+    volumes: # Make docker client accessible so we can terminate containers from the webserver
+      - /var/run/docker.sock:/var/run/docker.sock
+      - /tmp/io_manager_storage:/tmp/io_manager_storage
+    networks:
+      - docker_example_network
+    depends_on:
+      dagsterdb:
+        condition: service_healthy
+      meertrap-etl:
+        condition: service_started
+
+  dagster-daemon:
+    build:
+      context: .
+      dockerfile: ./Dockerfile.dagster
+    entrypoint:
+      - dagster-daemon
+      - run
+    container_name: dagster-daemon
+    restart: on-failure:3
+    env_file:
+      - path: .env
+    volumes: # Make docker client accessible so we can launch containers using host docker
+      - /var/run/docker.sock:/var/run/docker.sock
+      - /tmp/io_manager_storage:/tmp/io_manager_storage
+    networks:
+      - docker_example_network
+    depends_on:
+      dagsterdb:
+        condition: service_healthy
+      meertrap-etl:
+        condition: service_started
+
+networks:
+  docker_example_network:
+    driver: bridge
+    name: docker_example_network
+  ska-src-maltopuft_default:
+    external: true

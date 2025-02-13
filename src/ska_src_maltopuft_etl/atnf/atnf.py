@@ -1,7 +1,6 @@
 """ATNF pulsar catalogue ETL entrypoint."""
 
 import datetime as dt
-import logging
 
 import polars as pl
 from psrqpy import ATNF_BASE_URL, QueryATNF
@@ -10,9 +9,9 @@ from ska_src_maltopuft_etl import utils
 from ska_src_maltopuft_etl.atnf.params import query_param_mapping
 from ska_src_maltopuft_etl.atnf.targets import targets
 from ska_src_maltopuft_etl.core.database import engine
-from ska_src_maltopuft_etl.database_loader import DatabaseLoader
+from ska_src_maltopuft_etl.core.database_loader import DatabaseLoader
 
-logger = logging.getLogger(__name__)
+from . import logger
 
 
 def extract() -> pl.DataFrame:

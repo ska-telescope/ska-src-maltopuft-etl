@@ -34,6 +34,7 @@ psrqpy = "^1.2.10"
 ska-src-maltopuft-backend = {git = "https://gitlab.com/ska-telescope/src/ska-src-maltopuft-backend.git"}
 dagster = "^1.8.8"
 polars = "1.21.0"
+dagster-postgres = "^0.25.13"
 
 
 [tool.poetry.group.dev.dependencies]

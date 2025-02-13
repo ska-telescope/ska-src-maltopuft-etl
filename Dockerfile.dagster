@@ -1,0 +1,15 @@
+FROM python:3.11-slim
+
+# Install these in core
+RUN pip install \
+    dagster \
+    dagster-graphql \
+    dagster-webserver \
+    dagster-postgres \
+    dagster-docker
+
+ENV DAGSTER_HOME=/opt/dagster/dagster_home/
+
+WORKDIR $DAGSTER_HOME
+
+COPY dagster.yaml workspace.yaml $DAGSTER_HOME
