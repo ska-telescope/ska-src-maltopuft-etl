@@ -12,7 +12,7 @@ from orjson import JSONDecodeError  # pylint: disable=no-name-in-module
 from tqdm import tqdm
 
 from ska_src_maltopuft_etl.core.flatten import flatten
-from ska_src_maltopuft_etl.utils.hash import calculate_hash
+from ska_src_maltopuft_etl.utils import calculate_hash
 
 from .models import MeertrapRunSummary
 

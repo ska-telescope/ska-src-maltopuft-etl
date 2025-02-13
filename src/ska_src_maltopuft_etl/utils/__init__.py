@@ -2,14 +2,12 @@
 
 from .coordinate import (
     add_parenthesis,
-    format_dec_dms,
-    format_ra_hms,
     hms_to_degrees,
 )
+from .hash import calculate_hash
 
 __all__ = [
     "add_parenthesis",
-    "format_ra_hms",
-    "format_dec_dms",
     "hms_to_degrees",
+    "calculate_hash",
 ]
