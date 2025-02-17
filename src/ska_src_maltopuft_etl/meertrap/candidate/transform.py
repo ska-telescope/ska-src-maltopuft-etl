@@ -221,6 +221,7 @@ def transform_sp_candidate(cand_df: pl.DataFrame) -> pl.DataFrame:
         pl.concat_str(
             [
                 pl.lit(config.remote_file_root_path),
+                pl.lit(config.partition_key),
                 pl.col("sp_cand.plot_path"),
             ],
             separator="/",
