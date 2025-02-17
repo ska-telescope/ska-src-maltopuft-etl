@@ -5,6 +5,7 @@ python_logs:
   managed_python_loggers:
     - ska_src_maltopuft_etl.core
     - ska_src_maltopuft_etl.meertrap
+    - ska_src_maltopuft_etl.atnf
 
 scheduler:
   module: dagster.core.scheduler
@@ -45,7 +46,7 @@ run_storage:
   class: PostgresRunStorage
   config:
     postgres_db:
-      hostname: dagsterdb
+      hostname: ska-src-maltopuft-etl-dagster-db
       username:
         env: DAGSTER_POSTGRES_USER
       password:
@@ -59,7 +60,7 @@ schedule_storage:
   class: PostgresScheduleStorage
   config:
     postgres_db:
-      hostname: dagsterdb
+      hostname: ska-src-maltopuft-etl-dagster-db
       username:
         env: DAGSTER_POSTGRES_USER
       password:
@@ -73,7 +74,7 @@ event_log_storage:
   class: PostgresEventLogStorage
   config:
     postgres_db:
-      hostname: dagsterdb
+      hostname: ska-src-maltopuft-etl-dagster-db
       username:
         env: DAGSTER_POSTGRES_USER
       password:

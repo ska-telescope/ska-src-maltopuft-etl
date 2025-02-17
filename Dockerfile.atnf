@@ -39,4 +39,4 @@ COPY src/ src/
 
 # Run dagster gRPC server on port 4000
 EXPOSE 4000
-CMD ["dagster", "api", "grpc", "-h", "0.0.0.0", "-p", "4000", "-m", "src.dagster.meertrap.definitions"]
+CMD ["dagster", "api", "grpc", "-h", "0.0.0.0", "-p", "4000", "-m", "src.dagster.atnf.definitions"]

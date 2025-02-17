@@ -1,6 +1,9 @@
 load_from:
-  # Each entry here corresponds to a service in the docker-compose file that exposes user code.
   - grpc_server:
-      host: meertrap-etl
+      host: ska-src-maltopuft-etl-meertrap
       port: 4000
-      location_name: "meertrap-etl"
+      location_name: "ska-src-maltopuft-etl-meertrap"
+  - grpc_server:
+      host: ska-src-maltopuft-etl-atnf
+      port: 4000
+      location_name: "ska-src-maltopuft-etl-atnf"
