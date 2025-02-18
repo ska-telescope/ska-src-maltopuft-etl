@@ -167,8 +167,7 @@ ignore_missing_imports = true
 
 
 [tool.dagster]
-module_name = "src.ska_src_maltopuft_etl.dagster.definitions"
-code_location_name = "src.ska_src_maltopuft_etl.dagster"
+module_name = "src.dagster.definitions"
 
 
 [build-system]

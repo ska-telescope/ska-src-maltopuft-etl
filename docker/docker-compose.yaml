@@ -20,16 +20,16 @@ services:
 
   ska-src-maltopuft-etl-meertrap:
     build:
-      context: .
+      context: ../
       dockerfile: ./Dockerfile.meertrap
     container_name: ska-src-maltopuft-etl-meertrap
     image: ska-src-maltopuft-etl-meertrap
     restart: always
     volumes:
-      - ${MALTOPUFT_ROOT_DIR}/ska-src-maltopuft-etl/cfg/:/ska-src-maltopuft-etl/cfg/
+      - ${MALTOPUFT_ROOT_DIR}/ska-src-maltopuft-etl/cfg/config.yml:/ska-src-maltopuft-etl/cfg/config.yml
       - ${MALTOPUFT_DATA_DIR}/:/data/
     env_file:
-      - path: .env
+      - path: ../.env
     environment:
       DAGSTER_CURRENT_IMAGE: "ska-src-maltopuft-etl-meertrap"
     networks:
@@ -38,13 +38,13 @@ services:
 
   ska-src-maltopuft-etl-atnf:
     build:
-      context: .
+      context: ../
       dockerfile: ./Dockerfile.atnf
     container_name: ska-src-maltopuft-etl-atnf
     image: ska-src-maltopuft-etl-atnf
     restart: always
     env_file:
-      - path: .env
+      - path: ../.env
     environment:
       DAGSTER_CURRENT_IMAGE: "ska-src-maltopuft-etl-atnf"
     networks:
@@ -60,16 +60,16 @@ services:
       - -h
       - "0.0.0.0"
       - -p
-      - "3000"
+      - "3001"
       - -w
       - workspace.yaml
     container_name: ska-src-maltopuft-etl-dagster-webserver
     expose:
-      - "3000"
+      - "3001"
     ports:
-      - "3001:3000"
+      - "3001:3001"
     env_file:
-      - path: .env
+      - path: ../.env
     volumes: # Make docker client accessible so we can terminate containers from the webserver
       - /var/run/docker.sock:/var/run/docker.sock
       - /tmp/io_manager_storage:/tmp/io_manager_storage
@@ -86,10 +86,10 @@ services:
     entrypoint:
       - dagster-daemon
       - run
-    container_name: dagster-daemon
+    container_name: ska-src-maltopuft-etl-dagster-daemon
     restart: on-failure:3
     env_file:
-      - path: .env
+      - path: ../.env
     volumes: # Make docker client accessible so we can launch containers using host docker
       - /var/run/docker.sock:/var/run/docker.sock
       - /tmp/io_manager_storage:/tmp/io_manager_storage

@@ -30,13 +30,9 @@ RUN poetry config virtualenvs.in-project true --local \
 
 # Copy source code and install main package
 COPY cfg/config.default.yml cfg/config.default.yml
-COPY src src
-RUN poetry install --only main
-    
-# Add repository code
-COPY .env.dagster .env
 COPY src/ src/
+RUN poetry install --only main
 
 # Run dagster gRPC server on port 4000
 EXPOSE 4000
-CMD ["dagster", "api", "grpc", "-h", "0.0.0.0", "-p", "4000", "-m", "src.dagster.atnf.definitions"]
+CMD ["dagster", "code-server", "start", "-h", "0.0.0.0", "-p", "4000", "-m", "src.dagster.atnf.definitions"]

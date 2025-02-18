@@ -17,7 +17,7 @@ Pipfile.lock
 !.env.example
 
 # Configuration files
-cfg/config.yml
+cfg/**
 
 # Application data files
 data/

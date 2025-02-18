@@ -26,9 +26,16 @@ run_launcher:
   class: DockerRunLauncher
   config:
     env_vars:
+      - DAGSTER_POSTGRES_HOST
       - DAGSTER_POSTGRES_USER
       - DAGSTER_POSTGRES_PASSWORD
       - DAGSTER_POSTGRES_DB
+      - AUTH_DISABLED
+      - MALTOPUFT_POSTGRES_USER
+      - MALTOPUFT_POSTGRES_PASSWORD
+      - MALTOPUFT_POSTGRES_HOST
+      - MALTOPUFT_POSTGRES_PORT
+      - MALTOPUFT_POSTGRES_DB
     networks:
       - docker_example_network
       # Make maltopuftdb accessible to launched runs
@@ -46,7 +53,8 @@ run_storage:
   class: PostgresRunStorage
   config:
     postgres_db:
-      hostname: ska-src-maltopuft-etl-dagster-db
+      hostname:
+        env: DAGSTER_POSTGRES_HOST
       username:
         env: DAGSTER_POSTGRES_USER
       password:
@@ -60,7 +68,8 @@ schedule_storage:
   class: PostgresScheduleStorage
   config:
     postgres_db:
-      hostname: ska-src-maltopuft-etl-dagster-db
+      hostname:
+        env: DAGSTER_POSTGRES_HOST
       username:
         env: DAGSTER_POSTGRES_USER
       password:
@@ -74,7 +83,8 @@ event_log_storage:
   class: PostgresEventLogStorage
   config:
     postgres_db:
-      hostname: ska-src-maltopuft-etl-dagster-db
+      hostname:
+        env: DAGSTER_POSTGRES_HOST
       username:
         env: DAGSTER_POSTGRES_USER
       password:

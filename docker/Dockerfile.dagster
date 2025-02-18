@@ -1,6 +1,7 @@
 FROM python:3.11-slim
 
 # Install these in core
+# Install poetry and dagster deps
 RUN pip install \
     dagster \
     dagster-graphql \
@@ -8,7 +9,7 @@ RUN pip install \
     dagster-postgres \
     dagster-docker
 
-ENV DAGSTER_HOME=/opt/dagster/dagster_home/
+ENV DAGSTER_HOME=/opt/dagster/ska-src-maltopuft-etl
 
 WORKDIR $DAGSTER_HOME
 
