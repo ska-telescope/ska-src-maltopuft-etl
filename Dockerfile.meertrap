@@ -1,12 +1,5 @@
 FROM python:3.11-slim
 
-# Checkout and install dagster libraries needed to run the gRPC server
-# exposing your repository to dagster-webserver and dagster-daemon, and to load the DagsterInstance
-RUN pip install \
-    dagster \
-    dagster-postgres \
-    dagster-docker
-
 ARG POETRY_HOME="/opt/poetry"
 
 # Install poetry and any other binaries required.

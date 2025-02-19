@@ -1,6 +1,5 @@
 FROM python:3.11-slim
 
-# Install these in core
 # Install poetry and dagster deps
 RUN pip install \
     dagster \
