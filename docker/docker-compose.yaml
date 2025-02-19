@@ -1,4 +1,5 @@
 name: ska-src-maltopuft-etl
+
 services:
   ska-src-maltopuft-etl-dagster-db:
     image: postgres:16.3
@@ -25,11 +26,8 @@ services:
     container_name: ska-src-maltopuft-etl-meertrap
     image: ska-src-maltopuft-etl-meertrap
     restart: always
-    volumes:
-      - ${MALTOPUFT_ROOT_DIR}/ska-src-maltopuft-etl/cfg/config.yml:/ska-src-maltopuft-etl/cfg/config.yml
-      - ${MALTOPUFT_DATA_DIR}/:/data/
     env_file:
-      - path: ../.env
+      - path: .env
     environment:
       DAGSTER_CURRENT_IMAGE: "ska-src-maltopuft-etl-meertrap"
     networks:
@@ -44,7 +42,7 @@ services:
     image: ska-src-maltopuft-etl-atnf
     restart: always
     env_file:
-      - path: ../.env
+      - path: .env
     environment:
       DAGSTER_CURRENT_IMAGE: "ska-src-maltopuft-etl-atnf"
     networks:
@@ -56,22 +54,25 @@ services:
       context: .
       dockerfile: ./Dockerfile.dagster
     entrypoint:
-      - dagster-webserver
-      - -h
-      - "0.0.0.0"
-      - -p
-      - "3001"
-      - -w
-      - workspace.yaml
+      - /bin/sh
+      - -c
+      - |
+        cat dagster.template.yaml | envsubst > dagster.yaml && rm dagster.template.yaml
+        dagster-webserver -h 0.0.0.0 -p 3001 -w workspace.yaml
     container_name: ska-src-maltopuft-etl-dagster-webserver
     expose:
       - "3001"
     ports:
       - "3001:3001"
     env_file:
-      - path: ../.env
+      - path: .env
+    environment:
+      # Needs to be passed explicitly as an env var incase it's not provided in
+      # the .env file because, even if not present, we need a value to substitute into
+      # dagster.yaml.
+      - DOCKER_SOCKET_PATH=${DOCKER_SOCKET_PATH:-/var/run/docker.sock}
     volumes: # Make docker client accessible so we can terminate containers from the webserver
-      - /var/run/docker.sock:/var/run/docker.sock
+      - ${DOCKER_SOCKET_PATH:-/var/run/docker.sock}:/var/run/docker.sock
       - /tmp/io_manager_storage:/tmp/io_manager_storage
     networks:
       - docker_example_network
@@ -84,14 +85,22 @@ services:
       context: .
       dockerfile: ./Dockerfile.dagster
     entrypoint:
-      - dagster-daemon
-      - run
+      - /bin/sh
+      - -c
+      - |
+        cat dagster.template.yaml | envsubst > dagster.yaml && rm dagster.template.yaml
+        dagster-daemon run
     container_name: ska-src-maltopuft-etl-dagster-daemon
     restart: on-failure:3
     env_file:
-      - path: ../.env
+      - path: .env
+    environment:
+      # Needs to be passed explicitly as an env var incase it's not provided in
+      # the .env file because, even if not present, we need a value to substitute into
+      # dagster.yaml.
+      - DOCKER_SOCKET_PATH=${DOCKER_SOCKET_PATH:-/var/run/docker.sock}
     volumes: # Make docker client accessible so we can launch containers using host docker
-      - /var/run/docker.sock:/var/run/docker.sock
+      - ${DOCKER_SOCKET_PATH:-/var/run/docker.sock}:/var/run/docker.sock
       - /tmp/io_manager_storage:/tmp/io_manager_storage
     networks:
       - docker_example_network

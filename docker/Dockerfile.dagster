@@ -1,6 +1,7 @@
 FROM python:3.11-slim
 
-# Install poetry and dagster deps
+RUN apt-get update && apt-get install -y gettext-base
+
 RUN pip install \
     dagster \
     dagster-graphql \
@@ -9,7 +10,7 @@ RUN pip install \
     dagster-docker
 
 ENV DAGSTER_HOME=/opt/dagster/ska-src-maltopuft-etl
-
 WORKDIR $DAGSTER_HOME
 
-COPY dagster.yaml workspace.yaml $DAGSTER_HOME
+COPY workspace.yaml .
+COPY dagster.yaml dagster.template.yaml

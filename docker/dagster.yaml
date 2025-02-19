@@ -38,15 +38,20 @@ run_launcher:
       - MALTOPUFT_POSTGRES_DB
     networks:
       - docker_example_network
-      # Make maltopuftdb accessible to launched runs
+      # Make maltopuftdb accessible to launched containers
       - ska-src-maltopuft_default
     container_kwargs:
       auto_remove: true
-      volumes: # Make docker client accessible to any launched containers as well
-        - /var/run/docker.sock:/var/run/docker.sock
+      volumes:
+        # Make the docker client accessible to any launched containers
+        - ${DOCKER_SOCKET_PATH}:/var/run/docker.sock
         - /tmp/io_manager_storage:/tmp/io_manager_storage
-        - /Users/user/src/ska-src-maltopuft/ska-src-maltopuft-etl/cfg/config.yml:/ska-src-maltopuft-etl/cfg/config.yml
-        - /Users/user/data/meertrap/hard-candidates:/data
+        # Make the config file and data directory available in launched containers
+        # These environment variables are configured in docker/.env and passed as build
+        # args in docker-compose.yaml. The environment variables are substituted while
+        # building the image from Dockerfile.dagster.
+        - ${MALTOPUFT_ETL_CFG}:/ska-src-maltopuft-etl/cfg/config.yml
+        - ${MALTOPUFT_DATA_DIR}:/data
 
 run_storage:
   module: dagster_postgres.run_storage
