@@ -1,3 +1,5 @@
+"""MeerTRAP to MALTOPUFTDB ETL."""
+
 import logging
 
 from ska_ser_logging import configure_logging

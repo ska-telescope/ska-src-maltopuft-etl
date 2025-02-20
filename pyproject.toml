@@ -165,7 +165,7 @@ ignore_missing_imports = true
 
 
 [tool.dagster]
-module_name = "src.dagster.definitions"
+module_name = "src.pipelines.definitions"
 
 
 [build-system]

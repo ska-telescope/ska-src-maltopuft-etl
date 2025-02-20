@@ -1,9 +1,8 @@
 """Dagster assets for the ATNF catalogue ETL pipeline."""
 
 import polars as pl
-from ska_src_maltopuft_etl.atnf.atnf import extract, load, transform
-
 from dagster import asset
+from ska_src_maltopuft_etl.atnf.atnf import extract, load, transform
 
 
 @asset

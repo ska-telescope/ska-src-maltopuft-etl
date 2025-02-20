@@ -108,9 +108,7 @@ def parse_observations(directory: Path, n_file: int) -> pl.DataFrame:
                 result = future.result()
                 if result is not None:
                     parsed_data.append(result)
-            except (
-                Exception  # noqa: BLE001
-            ):  # pylint: disable=broad-exception-caught
+            except Exception:  # noqa: BLE001 # pylint: disable=W0718
                 n_task_fail += 1
                 logger.exception("Task failed. Reason:")
 

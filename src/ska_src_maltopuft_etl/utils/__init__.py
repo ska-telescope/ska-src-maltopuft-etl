@@ -1,9 +1,6 @@
 """Utility functions."""
 
-from .coordinate import (
-    add_parenthesis,
-    hms_to_degrees,
-)
+from .coordinate import add_parenthesis, hms_to_degrees
 from .hash import calculate_hash
 
 __all__ = [

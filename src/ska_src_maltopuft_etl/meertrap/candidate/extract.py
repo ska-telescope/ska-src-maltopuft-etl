@@ -103,9 +103,7 @@ def parse_candidates(directory: Path, n_file: int) -> pl.DataFrame:
         for future in tqdm(as_completed(futures), total=n_file):
             try:
                 parsed_data.append(future.result())
-            except (
-                Exception  # noqa: BLE001
-            ):  # pylint: disable=broad-exception-caught,
+            except Exception:  # noqa: BLE001 # pylint: disable=W0718
                 n_task_fail += 1
                 logger.exception("Task failed. Reason:")
 

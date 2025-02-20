@@ -4,7 +4,7 @@ include .make/docs.mk
 include .make/python.mk
 
 # Define variables
-PYTHON_LINT_TARGET := ./src
+PYTHON_LINT_TARGET := ./src/ska_src_maltopuft_etl
 PYTHON_SWITCHES_FOR_PYLINT = --disable=C0116,R0903,W1203
 
 # Note:
