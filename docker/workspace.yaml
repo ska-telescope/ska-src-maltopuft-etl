@@ -1,0 +1,9 @@
+load_from:
+  - grpc_server:
+      host: ska-src-maltopuft-etl-meertrap
+      port: 4000
+      location_name: "ska-src-maltopuft-etl-meertrap"
+  - grpc_server:
+      host: ska-src-maltopuft-etl-atnf
+      port: 4000
+      location_name: "ska-src-maltopuft-etl-atnf"

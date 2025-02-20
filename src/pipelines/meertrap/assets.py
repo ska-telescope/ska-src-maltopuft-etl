@@ -14,7 +14,6 @@ from dagster import (
     MetadataValue,
     asset,
 )
-
 from ska_src_maltopuft_etl.core.config import config
 from ska_src_maltopuft_etl.meertrap.meertrap import load, parse, transform
 

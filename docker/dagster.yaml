@@ -1,0 +1,99 @@
+telemetry:
+  enabled: false
+
+python_logs:
+  managed_python_loggers:
+    - ska_src_maltopuft_etl.core
+    - ska_src_maltopuft_etl.meertrap
+    - ska_src_maltopuft_etl.atnf
+
+scheduler:
+  module: dagster.core.scheduler
+  class: DagsterDaemonScheduler
+
+run_coordinator:
+  module: dagster.core.run_coordinator
+  class: QueuedRunCoordinator
+  config:
+    max_concurrent_runs: 5
+    tag_concurrency_limits:
+      - key: "operation"
+        value: "example"
+        limit: 5
+
+run_launcher:
+  module: dagster_docker
+  class: DockerRunLauncher
+  config:
+    env_vars:
+      - DAGSTER_POSTGRES_HOST
+      - DAGSTER_POSTGRES_USER
+      - DAGSTER_POSTGRES_PASSWORD
+      - DAGSTER_POSTGRES_DB
+      - AUTH_DISABLED
+      - MALTOPUFT_POSTGRES_USER
+      - MALTOPUFT_POSTGRES_PASSWORD
+      - MALTOPUFT_POSTGRES_HOST
+      - MALTOPUFT_POSTGRES_PORT
+      - MALTOPUFT_POSTGRES_DB
+    networks:
+      - docker_example_network
+      # Make maltopuftdb accessible to launched containers
+      - ska-src-maltopuft_default
+    container_kwargs:
+      auto_remove: true
+      volumes:
+        # Make the docker client accessible to any launched containers
+        - ${DOCKER_SOCKET_PATH}:/var/run/docker.sock
+        - /tmp/io_manager_storage:/tmp/io_manager_storage
+        # Make the config file and data directory available in launched containers
+        # These environment variables are configured in docker/.env and passed as build
+        # args in docker-compose.yaml. The environment variables are substituted while
+        # building the image from Dockerfile.dagster.
+        - ${MALTOPUFT_ETL_CFG}:/ska-src-maltopuft-etl/cfg/config.yml
+        - ${MALTOPUFT_DATA_DIR}:/data
+
+run_storage:
+  module: dagster_postgres.run_storage
+  class: PostgresRunStorage
+  config:
+    postgres_db:
+      hostname:
+        env: DAGSTER_POSTGRES_HOST
+      username:
+        env: DAGSTER_POSTGRES_USER
+      password:
+        env: DAGSTER_POSTGRES_PASSWORD
+      db_name:
+        env: DAGSTER_POSTGRES_DB
+      port: 5432
+
+schedule_storage:
+  module: dagster_postgres.schedule_storage
+  class: PostgresScheduleStorage
+  config:
+    postgres_db:
+      hostname:
+        env: DAGSTER_POSTGRES_HOST
+      username:
+        env: DAGSTER_POSTGRES_USER
+      password:
+        env: DAGSTER_POSTGRES_PASSWORD
+      db_name:
+        env: DAGSTER_POSTGRES_DB
+      port: 5432
+
+event_log_storage:
+  module: dagster_postgres.event_log
+  class: PostgresEventLogStorage
+  config:
+    postgres_db:
+      hostname:
+        env: DAGSTER_POSTGRES_HOST
+      username:
+        env: DAGSTER_POSTGRES_USER
+      password:
+        env: DAGSTER_POSTGRES_PASSWORD
+      db_name:
+        env: DAGSTER_POSTGRES_DB
+      port: 5432

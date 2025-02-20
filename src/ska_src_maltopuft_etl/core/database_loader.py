@@ -1,7 +1,5 @@
 """Loads transformed data into MALTOPUFTDB."""
 
-import logging
-
 import polars as pl
 import sqlalchemy as sa
 
@@ -11,8 +9,6 @@ from ska_src_maltopuft_etl.core.insert import (
     insert_row_or_get_conflict_id,
 )
 from ska_src_maltopuft_etl.core.target import TargetInformation
-
-logger = logging.getLogger(__name__)
 
 
 class DatabaseLoader:

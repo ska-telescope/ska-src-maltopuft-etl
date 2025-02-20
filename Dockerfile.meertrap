@@ -1,0 +1,31 @@
+FROM python:3.11-slim
+
+ARG POETRY_HOME="/opt/poetry"
+
+# Install poetry and any other binaries required.
+# libpq-dev and gcc binaries are required to use the psycopg python
+# package which handles connections to a PostgreSQL database.
+RUN apt update && \
+    apt-get install -y curl libpq-dev gcc make && \
+    curl -sSL https://install.python-poetry.org | POETRY_HOME=${POETRY_HOME} python3 - && \
+    ln -s ${POETRY_HOME}/bin/poetry /usr/local/bin/poetry
+
+ARG APP_PATH=/ska-src-maltopuft-etl
+WORKDIR ${APP_PATH}
+
+COPY pyproject.toml poetry.lock* README.md LICENSE ./
+
+# Install project dependencies in virtual environment with poetry
+ENV PATH="$APP_PATH/.venv/bin:$PATH"
+RUN poetry config virtualenvs.in-project true --local \
+    && python -m venv .venv \
+    && poetry install --only main --no-root
+
+# Copy source code and install main package
+COPY cfg/config.default.yml cfg/config.default.yml
+COPY src/ src/
+RUN poetry install --only main
+
+# Run dagster gRPC server on port 4000
+EXPOSE 4000
+CMD ["dagster", "code-server", "start", "-h", "0.0.0.0", "-p", "4000", "-m", "src.pipelines.meertrap.definitions"]

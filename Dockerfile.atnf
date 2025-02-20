@@ -22,9 +22,9 @@ RUN poetry config virtualenvs.in-project true --local \
     && poetry install --only main --no-root
 
 # Copy source code and install main package
-COPY entrypoint.sh entrypoint.sh
-COPY cfg/config.default.yml cfg/config.default.yml
-COPY src src
+COPY src/ src/
 RUN poetry install --only main
 
-CMD [ "/bin/sh", "entrypoint.sh" ]
+# Run dagster gRPC server on port 4000
+EXPOSE 4000
+CMD ["dagster", "code-server", "start", "-h", "0.0.0.0", "-p", "4000", "-m", "src.pipelines.atnf.definitions"]

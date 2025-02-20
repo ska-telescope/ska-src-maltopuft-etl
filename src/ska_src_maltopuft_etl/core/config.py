@@ -1,7 +1,6 @@
 """Intialise application config."""
 
 import datetime as dt
-import logging
 import sys
 from pathlib import Path
 
@@ -16,7 +15,7 @@ from pydantic import (
 )
 from pydantic_settings import BaseSettings
 
-logger = logging.getLogger(__name__)
+from ska_src_maltopuft_etl.core import logger
 
 
 class Settings(BaseSettings):
@@ -40,7 +39,7 @@ class Settings(BaseSettings):
 class Config(BaseModel):
     """Initialises application config."""
 
-    data_path: Path
+    data_path: Path = Path("/data")
     output_path: Path
     remote_file_root_path: str
     partition_key: str = ""
@@ -133,5 +132,8 @@ try:
     with Path.open(settings.cfg_path, "r", encoding="utf-8") as f:
         config = Config(**yaml.safe_load(f))
 except FileNotFoundError:
+    logger.warning(
+        f"No config file found at {settings.cfg_path}, using default config.",
+    )
     with Path.open(settings.default_cfg_path, "r", encoding="utf-8") as f:
         config = Config(**yaml.safe_load(f))

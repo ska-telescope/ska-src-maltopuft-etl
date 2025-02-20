@@ -1,0 +1,116 @@
+name: ska-src-maltopuft-etl
+
+services:
+  ska-src-maltopuft-etl-dagster-db:
+    image: postgres:16.3
+    container_name: ska-src-maltopuft-etl-dagster-db
+    ports:
+      # Currently have another postgres instance exposed on port 5432
+      - "5433:5432"
+    environment:
+      POSTGRES_USER: $DAGSTER_POSTGRES_USER
+      POSTGRES_PASSWORD: $DAGSTER_POSTGRES_PASSWORD
+      POSTGRES_DB: $DAGSTER_POSTGRES_DB
+    networks:
+      - docker_example_network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $DAGSTER_POSTGRES_USER -d $DAGSTER_POSTGRES_DB"]
+      interval: 10s
+      timeout: 8s
+      retries: 5
+
+  ska-src-maltopuft-etl-meertrap:
+    build:
+      context: ../
+      dockerfile: ./Dockerfile.meertrap
+    container_name: ska-src-maltopuft-etl-meertrap
+    image: ska-src-maltopuft-etl-meertrap
+    restart: always
+    env_file:
+      - path: .env
+    environment:
+      DAGSTER_CURRENT_IMAGE: "ska-src-maltopuft-etl-meertrap"
+    networks:
+      - docker_example_network
+      - ska-src-maltopuft_default
+
+  ska-src-maltopuft-etl-atnf:
+    build:
+      context: ../
+      dockerfile: ./Dockerfile.atnf
+    container_name: ska-src-maltopuft-etl-atnf
+    image: ska-src-maltopuft-etl-atnf
+    restart: always
+    env_file:
+      - path: .env
+    environment:
+      DAGSTER_CURRENT_IMAGE: "ska-src-maltopuft-etl-atnf"
+    networks:
+      - docker_example_network
+      - ska-src-maltopuft_default
+
+  ska-src-maltopuft-etl-dagster-webserver:
+    build:
+      context: .
+      dockerfile: ./Dockerfile.dagster
+    entrypoint:
+      - /bin/sh
+      - -c
+      - |
+        cat dagster.template.yaml | envsubst > dagster.yaml && rm dagster.template.yaml
+        dagster-webserver -h 0.0.0.0 -p 3001 -w workspace.yaml
+    container_name: ska-src-maltopuft-etl-dagster-webserver
+    expose:
+      - "3001"
+    ports:
+      - "3001:3001"
+    env_file:
+      - path: .env
+    environment:
+      # Needs to be passed explicitly as an env var incase it's not provided in
+      # the .env file because, even if not present, we need a value to substitute into
+      # dagster.yaml.
+      - DOCKER_SOCKET_PATH=${DOCKER_SOCKET_PATH:-/var/run/docker.sock}
+    volumes: # Make docker client accessible so we can terminate containers from the webserver
+      - ${DOCKER_SOCKET_PATH:-/var/run/docker.sock}:/var/run/docker.sock
+      - /tmp/io_manager_storage:/tmp/io_manager_storage
+    networks:
+      - docker_example_network
+    depends_on:
+      ska-src-maltopuft-etl-dagster-db:
+        condition: service_healthy
+
+  ska-src-maltopuft-etl-dagster-daemon:
+    build:
+      context: .
+      dockerfile: ./Dockerfile.dagster
+    entrypoint:
+      - /bin/sh
+      - -c
+      - |
+        cat dagster.template.yaml | envsubst > dagster.yaml && rm dagster.template.yaml
+        dagster-daemon run
+    container_name: ska-src-maltopuft-etl-dagster-daemon
+    restart: on-failure:3
+    env_file:
+      - path: .env
+    environment:
+      # Needs to be passed explicitly as an env var incase it's not provided in
+      # the .env file because, even if not present, we need a value to substitute into
+      # dagster.yaml.
+      - DOCKER_SOCKET_PATH=${DOCKER_SOCKET_PATH:-/var/run/docker.sock}
+    volumes: # Make docker client accessible so we can launch containers using host docker
+      - ${DOCKER_SOCKET_PATH:-/var/run/docker.sock}:/var/run/docker.sock
+      - /tmp/io_manager_storage:/tmp/io_manager_storage
+    networks:
+      - docker_example_network
+    depends_on:
+      ska-src-maltopuft-etl-dagster-db:
+        condition: service_healthy
+
+networks:
+  docker_example_network:
+    driver: bridge
+    name: docker_example_network
+  ska-src-maltopuft_default:
+    external: true

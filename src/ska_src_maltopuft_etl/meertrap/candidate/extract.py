@@ -1,6 +1,5 @@
 """Extract single pulse candidate data."""
 
-import logging
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from typing import Any
@@ -8,9 +7,9 @@ from typing import Any
 import polars as pl
 from tqdm import tqdm
 
-from .models import SPCCL_FILE_TO_DF_COLUMN_MAP, MeertrapSpccl
+from ska_src_maltopuft_etl.meertrap import logger
 
-logger = logging.getLogger(__name__)
+from .models import SPCCL_FILE_TO_DF_COLUMN_MAP, MeertrapSpccl
 
 
 def read_csv(filename: Path) -> list[str]:
@@ -104,7 +103,7 @@ def parse_candidates(directory: Path, n_file: int) -> pl.DataFrame:
         for future in tqdm(as_completed(futures), total=n_file):
             try:
                 parsed_data.append(future.result())
-            except Exception:  # pylint: disable=broad-exception-caught
+            except Exception:  # noqa: BLE001 # pylint: disable=W0718
                 n_task_fail += 1
                 logger.exception("Task failed. Reason:")
 

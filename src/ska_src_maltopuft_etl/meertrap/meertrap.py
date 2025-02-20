@@ -6,7 +6,6 @@ single pulse candidate data and observation metadata into the MALTOPUFT
 database schema.
 """
 
-import logging
 import os
 from collections.abc import Callable
 from functools import partial
@@ -14,10 +13,12 @@ from pathlib import Path
 from typing import Any
 
 import polars as pl
+from ska_src_maltopuft_backend.core.config import settings
 
 from ska_src_maltopuft_etl.core.config import config
 from ska_src_maltopuft_etl.core.database import engine
-from ska_src_maltopuft_etl.database_loader import DatabaseLoader
+from ska_src_maltopuft_etl.core.database_loader import DatabaseLoader
+from ska_src_maltopuft_etl.meertrap import logger
 from ska_src_maltopuft_etl.meertrap.candidate.targets import candidate_targets
 from ska_src_maltopuft_etl.meertrap.observation.targets import (
     observation_targets,
@@ -27,8 +28,6 @@ from .candidate.extract import parse_candidates
 from .candidate.transform import transform_spccl
 from .observation.extract import parse_observations
 from .observation.transform import transform_observation
-
-logger = logging.getLogger(__name__)
 
 
 def read_or_parse_parquet(
@@ -166,8 +165,9 @@ def load(
         logger.info("No transformed data to load, early stopping.")
         return obs_df, cand_df
 
-    logger.info("Loading MeerTRAP data into the database")
+    logger.info(f"Loading MeerTRAP data to {settings.MALTOPUFT_POSTGRES_INFO}")
     with engine.connect() as conn, conn.begin():
+        logger.info("Successfully connected to database")
         db = DatabaseLoader(conn=conn)
 
         for target in (
